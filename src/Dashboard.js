@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import regionsRaw from './italyRegions.json';
+import logoVvf from './logo_vvf.png';
 import './dashboard.css';
 
 // Map English IDs to Italian names
@@ -89,6 +90,8 @@ export default function Dashboard() {
   const [scenario, setScenario] = useState('normal');
   const [selected, setSelected] = useState(new Set());
   const [hoveredRegion, setHoveredRegion] = useState(null);
+  const [sortCol, setSortCol] = useState('status');
+  const [sortDir, setSortDir] = useState('asc');
 
   const sc = SCENARIOS[scenario];
   const stMap = useMemo(() => {
@@ -99,7 +102,26 @@ export default function Dashboard() {
 
   const hasSel = selected.size > 0;
   const filtered = hasSel ? sc.data.filter(r => selected.has(r.reg)) : sc.data;
-  const sorted = [...filtered].sort((a,b) => ({critical:0,warning:1,ok:2})[a.status] - ({critical:0,warning:1,ok:2})[b.status]);
+
+  function toggleSort(col) {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortCol(col); setSortDir('asc'); }
+  }
+
+  const STATUS_ORDER = {critical:0,warning:1,ok:2};
+  const sorted = [...filtered].sort((a, b) => {
+    let valA, valB;
+    switch(sortCol) {
+      case 'reg':    valA = a.reg; valB = b.reg; break;
+      case 'banda':  valA = a.banda; valB = b.banda; break;
+      case 'util':   valA = Math.round(a.banda/a.cap*100); valB = Math.round(b.banda/b.cap*100); break;
+      case 'latenza':valA = a.latenza; valB = b.latenza; break;
+      case 'so115':  valA = a.so115; valB = b.so115; break;
+      default:       valA = STATUS_ORDER[a.status]; valB = STATUS_ORDER[b.status]; break;
+    }
+    if (typeof valA === 'string') return sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    return sortDir === 'asc' ? valA - valB : valB - valA;
+  });
 
   // KPIs
   const n = filtered.length || 1;
@@ -111,7 +133,7 @@ export default function Dashboard() {
 
   // Chart data
   const trendData = sc.latT.map((lat,i) => ({ name: `-${30-i}m`, latenza: lat, pktLoss: sc.pktT[i] }));
-  const satData = filtered.map(r => ({ name: r.reg, attuale: r.banda, proiezione: Math.min(100, Math.round(r.banda*1.18+rn(0,5))) }));
+  const satData = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => ({ name: r.reg, attuale: r.banda, proiezione: Math.min(100, Math.round(r.banda*1.18+rn(0,5))) }));
 
   function toggleRegion(reg) {
     if (!ACTIVE_REGIONS.includes(reg)) return;
@@ -159,16 +181,16 @@ export default function Dashboard() {
     <div className="dashboard">
       {/* Header */}
       <div className="header">
-        <div>
-          <div className="title"><span className="vvf-accent">1.2.1</span> Stato connettività WAN per sede</div>
-          <div className="subtitle">CNVVF — Monitoraggio rete MPLS sedi operative</div>
+        <div className="header-band">
+          <div className="header-title">STATO CONNESSIONI CNVVF</div>
         </div>
-        <div className="header-right">
+        <div className="header-controls">
           <span className={`badge ${sc.badgeClass}`}>{sc.badge}</span>
           <div className="scenario-btns">
             <button className={scenario==='normal'?'active':''} onClick={()=>switchScenario('normal')}>Normale</button>
             <button className={scenario==='emergency'?'active':''} onClick={()=>switchScenario('emergency')}>Emergenza — Sisma 2016</button>
           </div>
+          <img src={logoVvf} alt="VVF" className="vvf-logo" />
         </div>
       </div>
 
@@ -213,16 +235,18 @@ export default function Dashboard() {
             {/* Province markers for earthquake */}
             {showProvMarkers && sc.provs.map(p => (
               <g key={p.name}>
-                <circle cx={p.x} cy={p.y} r={10} fill={COL.critStroke} opacity={0.18} />
-                <circle cx={p.x} cy={p.y} r={4.5} fill={COL.critStroke} stroke="#fff" strokeWidth={1.2} />
-                <text x={p.x+8} y={p.y+3} fontSize={7.5} fill="#444" fontWeight={500}>{p.name}</text>
+                <circle cx={p.x} cy={p.y} r={12} fill={COL.critStroke} opacity={0.15} />
+                <circle cx={p.x} cy={p.y} r={5} fill={COL.critStroke} stroke="#fff" strokeWidth={1.5} />
+                <text x={p.x+9} y={p.y+4} fontSize={13} fill="#222" fontWeight={700}
+                  stroke="white" strokeWidth={3} paintOrder="stroke">{p.name}</text>
               </g>
             ))}
             {showProvMarkers && (
               <g>
-                <line x1={EPICENTER.x-6} y1={EPICENTER.y-6} x2={EPICENTER.x+6} y2={EPICENTER.y+6} stroke={COL.critStroke} strokeWidth={2.5} />
-                <line x1={EPICENTER.x+6} y1={EPICENTER.y-6} x2={EPICENTER.x-6} y2={EPICENTER.y+6} stroke={COL.critStroke} strokeWidth={2.5} />
-                <text x={EPICENTER.x+9} y={EPICENTER.y-4} fontSize={7.5} fill={COL.critStroke} fontWeight={500}>Epicentro</text>
+                <line x1={EPICENTER.x-7} y1={EPICENTER.y-7} x2={EPICENTER.x+7} y2={EPICENTER.y+7} stroke={COL.critStroke} strokeWidth={3} />
+                <line x1={EPICENTER.x+7} y1={EPICENTER.y-7} x2={EPICENTER.x-7} y2={EPICENTER.y+7} stroke={COL.critStroke} strokeWidth={3} />
+                <text x={EPICENTER.x+10} y={EPICENTER.y-5} fontSize={13} fill={COL.critStroke} fontWeight={700}
+                  stroke="white" strokeWidth={3} paintOrder="stroke">Epicentro</text>
               </g>
             )}
           </svg>
@@ -247,7 +271,16 @@ export default function Dashboard() {
             <table>
               <thead>
                 <tr>
-                  <th>Sede</th><th>Link MPLS</th><th>Banda</th><th>Cap.</th><th>% Util.</th><th>Latenza</th><th>SO115</th><th>Stato</th>
+                  {[['reg','Sede'],['link','Link MPLS'],['banda','Banda'],['cap','Cap.'],['util','% Util.'],['latenza','Latenza'],['so115','SO115'],['status','Stato']].map(([col,label]) => {
+                    const sortable = ['reg','banda','util','latenza','so115','status'].includes(col);
+                    return (
+                      <th key={col} onClick={sortable ? ()=>toggleSort(col) : undefined}
+                        style={sortable ? {cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'} : {}}>
+                        {label}
+                        {sortable && sortCol===col && <span style={{marginLeft:3,color:'#C1272D'}}>{sortDir==='asc'?'▲':'▼'}</span>}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -287,9 +320,9 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height={160}>
             <LineChart data={trendData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{fontSize:9,fill:'#bbb'}} interval={4} />
-              <YAxis yAxisId="left" tick={{fontSize:9,fill:'#bbb'}} label={{value:'ms',position:'insideLeft',fontSize:9,fill:'#aaa'}} />
-              <YAxis yAxisId="right" orientation="right" tick={{fontSize:9,fill:'#bbb'}} label={{value:'%loss',position:'insideRight',fontSize:9,fill:'#aaa'}} />
+              <XAxis dataKey="name" tick={{fontSize:11,fill:'#999'}} interval={4} />
+              <YAxis yAxisId="left" tick={{fontSize:11,fill:'#999'}} label={{value:'ms',position:'insideLeft',fontSize:11,fill:'#999'}} />
+              <YAxis yAxisId="right" orientation="right" tick={{fontSize:11,fill:'#999'}} label={{value:'%loss',position:'insideRight',fontSize:11,fill:'#999'}} />
               <Tooltip />
               <Line yAxisId="left" type="monotone" dataKey="latenza" stroke={COL.vvf} strokeWidth={1.5} dot={false} />
               <Line yAxisId="right" type="monotone" dataKey="pktLoss" stroke="#1976d2" strokeWidth={1.5} dot={false} />
@@ -305,8 +338,8 @@ export default function Dashboard() {
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={satData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" tick={{fontSize:7,fill:'#bbb'}} angle={-45} textAnchor="end" height={50} />
-              <YAxis tick={{fontSize:9,fill:'#bbb'}} domain={[0,100]} tickFormatter={v=>`${v}%`} />
+              <XAxis dataKey="name" tick={{fontSize:10,fill:'#999'}} angle={-45} textAnchor="end" height={55} />
+              <YAxis tick={{fontSize:11,fill:'#999'}} domain={[0,100]} tickFormatter={v=>`${v}%`} />
               <Tooltip />
               <Bar dataKey="attuale" fill={COL.vvf} radius={[2,2,0,0]} />
               <Bar dataKey="proiezione" fill="rgba(193,39,45,0.2)" radius={[2,2,0,0]} />
