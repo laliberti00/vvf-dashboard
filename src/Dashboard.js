@@ -4,222 +4,189 @@ import regionsRaw from './italyRegions.json';
 import logoVvf from './logo_vvf.png';
 import './dashboard.css';
 
-// Map English IDs to Italian names
-const ID_TO_IT = {
-  'abruzzo':'Abruzzo','aosta-valley':"Valle d'Aosta",'apulia':'Puglia','basilicata':'Basilicata',
-  'calabria':'Calabria','campania':'Campania','emilia-romagna':'Emilia-Romagna',
-  'friuli-venezia-giulia':'Friuli-Venezia Giulia','lazio':'Lazio','liguria':'Liguria',
-  'lombardy':'Lombardia','marche':'Marche','molise':'Molise','piedmont':'Piemonte',
-  'sardinia':'Sardegna','sicily':'Sicilia','trentino-south-tyrol':'Trentino-Alto Adige',
-  'tuscany':'Toscana','umbria':'Umbria','veneto':'Veneto'
-};
+import { ACTIVE_REGIONS, EXCLUDED, ID_TO_IT, COL, SOGLIE, SIT_ORDER } from './data/constants';
+import { getSituation, sitStroke, sitFill } from './data/getSituation';
+import { SCENARIOS } from './data/scenarios';
 
-// 18 active regions (excluding VdA and TAA)
-const ACTIVE_REGIONS = [
-  'Piemonte','Liguria','Lombardia','Veneto','Friuli-Venezia Giulia','Emilia-Romagna',
-  'Toscana','Umbria','Marche','Lazio','Abruzzo','Molise',
-  'Campania','Puglia','Basilicata','Calabria','Sicilia','Sardegna'
-];
-const EXCLUDED = ["Valle d'Aosta","Trentino-Alto Adige"];
-
-// Province markers for earthquake scenario
-const PROV_MARKERS = [
-  { name:'Rieti', x:340, y:370 },
-  { name:'Perugia', x:305, y:330 },
-  { name:'Ascoli P.', x:380, y:325 },
-  { name:'Teramo', x:375, y:310 },
-  { name:"L'Aquila", x:350, y:340 },
-  { name:'Macerata', x:365, y:300 },
-];
-const EPICENTER = { x:362, y:332 };
-
-// Colors
-const COL = {
-  ok: '#a5d6a7', okStroke: '#4caf50',
-  warning: '#ffcc80', warnStroke: '#ff9800',
-  critical: '#ef9a9a', critStroke: '#ef5350',
-  excluded: '#e8e8e8', faded: '#f2f2f2',
-  vvf: '#C1272D'
-};
-
-function rn(a, b) { return Math.round(a + Math.random() * (b - a)); }
-
-// Capacità per tipo link: Fibra=100, ADSL=20, LTE=10
-const CAP = { fibra: 100, adsl: 20, lte: 10 };
-
-function generateNormalData() {
-  return ACTIVE_REGIONS.map(reg => ({
-    reg, link: 'UP', tipo: 'Fibra', banda: rn(12,35), cap: CAP.fibra, latenza: rn(4,16),
-    pktLoss: +(Math.random()*0.4).toFixed(1), so115: rn(0,3), status: 'ok'
-  }));
-}
-
-function generateEmergencyData() {
-  const crit = ['Lazio','Umbria','Marche','Abruzzo'];
-  const warn = ['Toscana','Molise'];
-  return ACTIVE_REGIONS.map(reg => {
-    const c = crit.includes(reg), w = warn.includes(reg);
-    // LTE cap=10 → banda 7-10 Mbps (saturo); ADSL cap=20 → banda 14-19 Mbps (saturo); Fibra=normale
-    return {
-      reg,
-      link: c ? 'DOWN' : w ? 'DEGRADATO' : 'UP',
-      tipo: c ? 'LTE' : w ? 'ADSL' : 'Fibra',
-      banda: c ? rn(7,10) : w ? rn(14,19) : rn(12,40),
-      cap: c ? CAP.lte : w ? CAP.adsl : CAP.fibra,
-      latenza: c ? rn(180,400) : w ? rn(55,90) : rn(5,20),
-      pktLoss: c ? +(6+Math.random()*8).toFixed(1) : w ? +(1.5+Math.random()*3).toFixed(1) : +(Math.random()*0.5).toFixed(1),
-      so115: c ? rn(18,35) : w ? rn(6,14) : rn(0,4),
-      status: c ? 'critical' : w ? 'warning' : 'ok'
-    };
-  });
-}
-
-const latTrendNormal = Array.from({length:30},()=>rn(8,16));
-const pktTrendNormal = Array.from({length:30},()=>+(Math.random()*0.4).toFixed(1));
-const latTrendEmerg = [14,18,25,35,48,62,78,95,110,130,148,165,175,190,200,210,218,225,235,240,248,255,260,258,265,270,275,280,278,275];
-const pktTrendEmerg = [0.3,0.5,0.8,1.2,1.8,2.5,3.2,3.8,4.5,5.0,5.5,6.0,6.2,6.5,6.8,7.0,7.2,7.5,7.3,7.6,7.8,8.0,8.2,8.0,8.3,8.5,8.7,9.0,8.8,8.7];
-
-const SCENARIOS = {
-  normal: { badge: 'Operativo', badgeClass: 'badge-ok', data: generateNormalData(), provs: [], latT: latTrendNormal, pktT: pktTrendNormal },
-  emergency: { badge: 'Emergenza — Sisma Centro Italia 24/08/2016', badgeClass: 'badge-crit', data: generateEmergencyData(), provs: PROV_MARKERS, latT: latTrendEmerg, pktT: pktTrendEmerg }
-};
-
-// Build SVG regions lookup: id -> { italianName, path }
 const svgRegions = regionsRaw.map(([id, engName, path]) => ({
   id, engName, italianName: ID_TO_IT[id] || engName, path
 }));
 
-function statusColor(st) { return st==='ok'?COL.ok:st==='warning'?COL.warning:st==='critical'?COL.critical:COL.excluded; }
-function statusStroke(st) { return st==='ok'?COL.okStroke:st==='warning'?COL.warnStroke:st==='critical'?COL.critStroke:'#ccc'; }
-function valColor(v,w,c) { return v>=c?COL.critStroke:v>=w?COL.warnStroke:COL.okStroke; }
-
+// ── Componente principale ─────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [scenario, setScenario] = useState('normal');
-  const [selected, setSelected] = useState(new Set());
-  const [statusFilters, setStatusFilters] = useState(new Set(['ok','warning','critical']));
+  const [scenario,       setScenario]       = useState('normal');
+  const [selected,       setSelected]       = useState(new Set());
+  const [statusFilters,  setStatusFilters]  = useState(new Set(['OPERATIVO','DEGRADATO','EMERGENZA']));
   const [regionDropOpen, setRegionDropOpen] = useState(false);
   const [statusDropOpen, setStatusDropOpen] = useState(false);
-  const [hoveredRegion, setHoveredRegion] = useState(null);
-  const [sortCol, setSortCol] = useState('status');
-  const [sortDir, setSortDir] = useState('asc');
+  const [hoveredRegion,  setHoveredRegion]  = useState(null);
+  const [sortCol,        setSortCol]        = useState('sit');
+  const [sortDir,        setSortDir]        = useState('asc');
+  const [viewBox,        setViewBox]        = useState('0 0 610 793');
 
   const regionDropRef = useRef(null);
   const statusDropRef = useRef(null);
+  const pathRefs      = useRef({});
 
+  // Chiudi dropdown su click fuori
   useEffect(() => {
-    function handleClick(e) {
+    function onMouseDown(e) {
       if (regionDropRef.current && !regionDropRef.current.contains(e.target)) setRegionDropOpen(false);
       if (statusDropRef.current && !statusDropRef.current.contains(e.target)) setStatusDropOpen(false);
     }
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
   }, []);
 
+  // Zoom mappa su selezione
+  useEffect(() => {
+    if (selected.size === 0) { setViewBox('0 0 610 793'); return; }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    selected.forEach(reg => {
+      const el = pathRefs.current[reg];
+      if (el) {
+        const b = el.getBBox();
+        minX = Math.min(minX, b.x);    minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x+b.width); maxY = Math.max(maxY, b.y+b.height);
+      }
+    });
+    if (minX !== Infinity) {
+      const pad = 35;
+      setViewBox(`${minX-pad} ${minY-pad} ${maxX-minX+2*pad} ${maxY-minY+2*pad}`);
+    }
+  }, [selected]);
+
   const sc = SCENARIOS[scenario];
+
+  // Dati arricchiti con sat + sit (calcolati tramite getSituation)
+  const enriched = useMemo(() => sc.data.map(r => {
+    const sat = Math.round(r.banda / r.cap * 100);
+    const sit = getSituation(r.tipo, sat);
+    return { ...r, sat, sit };
+  }), [sc.data]);
+
   const stMap = useMemo(() => {
     const m = {};
-    sc.data.forEach(r => { m[r.reg] = r.status; });
+    enriched.forEach(r => { m[r.reg] = r.sit; });
     return m;
-  }, [sc.data]);
+  }, [enriched]);
 
-  const hasSel = selected.size > 0;
-  const allStatusSelected = statusFilters.size === 3;
-  const filtered = sc.data.filter(r => {
+  const hasSel          = selected.size > 0;
+  const allStatusSel    = statusFilters.size === 3;
+
+  const filtered = enriched.filter(r => {
     if (hasSel && !selected.has(r.reg)) return false;
-    if (!allStatusSelected && !statusFilters.has(r.status)) return false;
+    if (!allStatusSel && !statusFilters.has(r.sit)) return false;
     return true;
   });
 
-  function toggleStatusFilter(st) {
-    setStatusFilters(prev => {
-      const next = new Set(prev);
-      if (next.has(st)) { if (next.size > 1) next.delete(st); } else next.add(st);
-      return next;
-    });
-  }
-
+  // ── Ordinamento tabella ───────────────────────────────────────────────────
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortCol(col); setSortDir('asc'); }
   }
 
-  const STATUS_ORDER = {critical:0,warning:1,ok:2};
   const sorted = [...filtered].sort((a, b) => {
-    let valA, valB;
-    switch(sortCol) {
-      case 'reg':    valA = a.reg; valB = b.reg; break;
-      case 'banda':  valA = a.banda; valB = b.banda; break;
-      case 'util':   valA = Math.round(a.banda/a.cap*100); valB = Math.round(b.banda/b.cap*100); break;
-      case 'latenza':valA = a.latenza; valB = b.latenza; break;
-      case 'so115':  valA = a.so115; valB = b.so115; break;
-      default:       valA = STATUS_ORDER[a.status]; valB = STATUS_ORDER[b.status]; break;
+    let vA, vB;
+    switch (sortCol) {
+      case 'reg':   vA = a.reg;   vB = b.reg;   break;
+      case 'banda': vA = a.banda; vB = b.banda;  break;
+      case 'sat':   vA = a.sat;   vB = b.sat;    break;
+      case 'so115': vA = a.so115; vB = b.so115;  break;
+      default:      vA = SIT_ORDER[a.sit]; vB = SIT_ORDER[b.sit]; break;
     }
-    if (typeof valA === 'string') return sortDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    return sortDir === 'asc' ? valA - valB : valB - valA;
+    if (typeof vA === 'string') return sortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA);
+    return sortDir === 'asc' ? vA - vB : vB - vA;
   });
 
-  // KPIs
+  // ── Metriche quadranti ────────────────────────────────────────────────────
   const n = filtered.length || 1;
-  const avgBanda = Math.round(filtered.reduce((s,r)=>s+r.banda,0)/n);
-  const sediCrit = filtered.filter(r=>r.status!=='ok').length;
-  const so115 = filtered.filter(r=>r.status!=='ok').reduce((s,r)=>s+r.so115,0);
-  const avgLat = Math.round(filtered.reduce((s,r)=>s+r.latenza,0)/n);
-  const critNames = filtered.filter(r=>r.status!=='ok').map(r=>r.reg).join(', ');
 
-  // Chart data
-  const trendData = sc.latT.map((lat,i) => ({ name: `-${30-i}m`, latenza: lat, pktLoss: sc.pktT[i] }));
-  // Saturazione: % di utilizzo sul link attivo (Fibra/ADSL/LTE)
-  const satData = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => {
-    const pctAtt = Math.round(r.banda / r.cap * 100);
-    const pctProj = Math.min(100, Math.round(pctAtt * 1.15 + rn(0,5)));
-    return { name: r.reg, attuale: pctAtt, proiezione: pctProj };
-  });
+  // Q1 – Margine Operativo
+  const q1ok   = filtered.filter(r => r.sit === 'OPERATIVO').length;
+  const q1warn = filtered.filter(r => r.sit === 'DEGRADATO').length;
+  const q1crit = filtered.filter(r => r.sit === 'EMERGENZA').length;
+  const q1Label      = q1crit > 0 ? 'Critica' : q1warn > 0 ? 'Sotto stress' : 'Stabile';
+  const q1LabelColor = q1crit > 0 ? COL.critStroke : q1warn > 0 ? COL.warnStroke : COL.okStroke;
 
+  // Q2 – Sedi a Rischio
+  const q2 = filtered.filter(r =>
+    r.sit === 'EMERGENZA' || (r.sit === 'DEGRADATO' && r.so115 > SOGLIE.so115_rischio)
+  ).length;
+
+  // Q3 – Anomalie (degrado/emergenza senza attività SO115 a giustificarlo)
+  const q3 = filtered.filter(r =>
+    (r.sit === 'EMERGENZA' || r.sit === 'DEGRADATO') && r.so115 <= SOGLIE.so115_anomalia
+  ).length;
+  const q3Color = q3 === 0 ? COL.okStroke : q3 <= 2 ? COL.warnStroke : COL.critStroke;
+
+  // Dati grafici
+  const trendData = sc.trend.map((t,i) => ({ name:`-${30-i}m`, latenza: t.latenza, pktLoss: t.pktLoss }));
+  const satData   = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => ({
+    name: r.reg,
+    attuale:    r.sat,
+    proiezione: Math.min(100, Math.round(r.sat * 1.15 + 2))
+  }));
+
+  // Q4 – Tendenza (+30 min)
+  const avgSatNow  = filtered.reduce((s,r) => s + r.sat, 0) / n;
+  const avgSatProj = filtered.reduce((s,r) => s + Math.min(100, r.sat * 1.15 + 2), 0) / n;
+  const trendDelta  = avgSatProj - avgSatNow;
+  const trendLabel  = trendDelta > SOGLIE.trend_delta ? 'Peggioramento' : 'Stabile';
+  const trendIcon   = trendDelta > SOGLIE.trend_delta ? '🔺' : '➖';
+  const trendColor  = trendDelta > SOGLIE.trend_delta ? COL.critStroke : COL.okStroke;
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
   function toggleRegion(reg) {
     if (!ACTIVE_REGIONS.includes(reg)) return;
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(reg)) next.delete(reg); else next.add(reg);
-      return next;
+    setSelected(prev => { const n = new Set(prev); n.has(reg) ? n.delete(reg) : n.add(reg); return n; });
+  }
+  function clearSelection() { setSelected(new Set()); }
+
+  function toggleStatusFilter(st) {
+    setStatusFilters(prev => {
+      const n = new Set(prev);
+      if (n.has(st)) { if (n.size > 1) n.delete(st); } else n.add(st);
+      return n;
     });
   }
 
-  function clearSelection() { setSelected(new Set()); }
-
-  function switchScenario(sc) { setScenario(sc); setSelected(new Set()); setStatusFilters(new Set(['ok','warning','critical'])); }
-
-  function getFill(italianName) {
-    if (EXCLUDED.includes(italianName)) return COL.excluded;
-    if (!ACTIVE_REGIONS.includes(italianName)) return COL.excluded;
-    const st = stMap[italianName] || 'ok';
-    if (hasSel && !selected.has(italianName)) return COL.faded;
-    return statusColor(st);
+  function switchScenario(s) {
+    setScenario(s);
+    setSelected(new Set());
+    setStatusFilters(new Set(['OPERATIVO','DEGRADATO','EMERGENZA']));
   }
 
-  function getStroke(italianName) {
-    if (EXCLUDED.includes(italianName)) return '#ddd';
-    if (hasSel && selected.has(italianName)) return COL.vvf;
-    const st = stMap[italianName] || 'ok';
-    return statusStroke(st);
+  // ── Mappa helpers (usano getSituation via stMap) ──────────────────────────
+  function getFill(name) {
+    if (EXCLUDED.includes(name) || !ACTIVE_REGIONS.includes(name)) return COL.excluded;
+    if (hasSel && !selected.has(name)) return COL.faded;
+    return sitFill(stMap[name] || 'OPERATIVO');
   }
-
-  function getStrokeWidth(italianName) {
-    if (hasSel && selected.has(italianName)) return 2.5;
-    if (EXCLUDED.includes(italianName)) return 0.3;
-    const st = stMap[italianName] || 'ok';
-    return st==='critical'?1.5:st==='warning'?1:0.5;
+  function getStroke(name) {
+    if (EXCLUDED.includes(name)) return '#ddd';
+    if (hasSel && selected.has(name)) return COL.vvf;
+    return sitStroke(stMap[name] || 'OPERATIVO');
   }
-
-  function getOpacity(italianName) {
-    if (hasSel && ACTIVE_REGIONS.includes(italianName) && !selected.has(italianName)) return 0.25;
+  function getStrokeWidth(name) {
+    if (hasSel && selected.has(name)) return 2.5;
+    if (EXCLUDED.includes(name)) return 0.3;
+    const sit = stMap[name] || 'OPERATIVO';
+    return sit === 'EMERGENZA' ? 1.5 : sit === 'DEGRADATO' ? 1 : 0.5;
+  }
+  function getOpacity(name) {
+    if (hasSel && ACTIVE_REGIONS.includes(name) && !selected.has(name)) return 0.25;
     return 1;
   }
 
-  const showProvMarkers = scenario === 'emergency' && (!hasSel || ['Lazio','Umbria','Marche','Abruzzo'].some(r => selected.has(r)));
+  const showProvMarkers = sc.provs.length > 0 &&
+    (!hasSel || sc.criticalRegions.some(r => selected.has(r)));
 
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <div className="dashboard">
-      {/* Header */}
+
+      {/* ── Header ── */}
       <div className="header">
         <div className="header-band">
           <div className="header-title">STATO CONNESSIONI CNVVF</div>
@@ -227,16 +194,18 @@ export default function Dashboard() {
         <div className="header-controls">
           <span className={`badge ${sc.badgeClass}`}>{sc.badge}</span>
           <div className="scenario-btns">
-            <button className={scenario==='normal'?'active':''} onClick={()=>switchScenario('normal')}>Normale</button>
-            <button className={scenario==='emergency'?'active':''} onClick={()=>switchScenario('emergency')}>Emergenza — Sisma 2016</button>
+            {Object.values(SCENARIOS).map(s => (
+              <button key={s.id} className={scenario===s.id?'active':''} onClick={()=>switchScenario(s.id)}>
+                {s.label}
+              </button>
+            ))}
           </div>
           <img src={logoVvf} alt="VVF" className="vvf-logo" />
         </div>
       </div>
 
-      {/* Filters + Legend */}
+      {/* ── Filtri + Legenda ── */}
       <div className="filter-bar">
-        {/* Regioni multi-select */}
         <div className="msel-wrap" ref={regionDropRef}>
           <span className="filter-label">Regioni:</span>
           <button className="msel-btn" onClick={() => setRegionDropOpen(o => !o)}>
@@ -258,17 +227,18 @@ export default function Dashboard() {
 
         <div className="filter-sep" />
 
-        {/* Stato multi-select */}
         <div className="msel-wrap" ref={statusDropRef}>
           <span className="filter-label">Stato:</span>
           <button className="msel-btn" onClick={() => setStatusDropOpen(o => !o)}>
-            {allStatusSelected ? 'Tutti gli stati' : [...statusFilters].map(s => s==='ok'?'Operativo':s==='warning'?'Degradato':'Emergenza').join(', ')}
+            {allStatusSel ? 'Tutti gli stati' : [...statusFilters].map(s =>
+              s==='OPERATIVO'?'Operativo':s==='DEGRADATO'?'Degradato':'Emergenza'
+            ).join(', ')}
             <span className="msel-arrow">{statusDropOpen ? '▲' : '▼'}</span>
           </button>
-          {!allStatusSelected && <span className="reset" onClick={() => setStatusFilters(new Set(['ok','warning','critical']))}>✕ Reset</span>}
+          {!allStatusSel && <span className="reset" onClick={()=>setStatusFilters(new Set(['OPERATIVO','DEGRADATO','EMERGENZA']))}>✕ Reset</span>}
           {statusDropOpen && (
             <div className="msel-dropdown">
-              {[['ok','Operativo',COL.okStroke],['warning','Degradato',COL.warnStroke],['critical','Emergenza',COL.critStroke]].map(([val,label,color]) => (
+              {[['OPERATIVO','Operativo',COL.okStroke],['DEGRADATO','Degradato',COL.warnStroke],['EMERGENZA','Emergenza',COL.critStroke]].map(([val,label,color]) => (
                 <label key={val} className="msel-option">
                   <input type="checkbox" checked={statusFilters.has(val)} onChange={() => toggleStatusFilter(val)} />
                   <span className="msel-dot" style={{background:color}} />
@@ -281,30 +251,73 @@ export default function Dashboard() {
 
         <div className="filter-sep" />
 
-        {/* Legenda stati */}
         <div className="status-legend">
-          <div className="sleg-item"><span className="sleg-dot" style={{background:COL.critStroke}} /><span><strong>Emergenza:</strong> sede su LTE oppure saturazione ≥ 80%</span></div>
-          <div className="sleg-item"><span className="sleg-dot" style={{background:COL.warnStroke}} /><span><strong>Degradato:</strong> sede su ADSL oppure saturazione 50–80%</span></div>
+          <div className="sleg-item"><span className="sleg-dot" style={{background:COL.critStroke}} /><span><strong>Emergenza:</strong> LTE oppure saturazione ≥ 80%</span></div>
+          <div className="sleg-item"><span className="sleg-dot" style={{background:COL.warnStroke}} /><span><strong>Degradato:</strong> DSL oppure saturazione 50–80%</span></div>
           <div className="sleg-item"><span className="sleg-dot" style={{background:COL.okStroke}} /><span><strong>Operativo:</strong> fibra attiva, saturazione &lt; 50%</span></div>
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="kpi-row">
-        <div className="kpi"><div className="kpi-label">% Banda / capacità</div><div className="kpi-val" style={{color:valColor(avgBanda,55,80)}}>{avgBanda}%</div><div className="kpi-sub">Attenzione &gt;55% | Critica &gt;80%</div></div>
-        <div className="kpi"><div className="kpi-label">Sedi degradate / emergenza</div><div className="kpi-val" style={{color:sediCrit>3?COL.critStroke:sediCrit>0?COL.warnStroke:COL.okStroke}}>{sediCrit} / {filtered.length}</div><div className="kpi-sub">{critNames||'Tutte operative'}</div></div>
-        <div className="kpi"><div className="kpi-label">Interventi SO115 sedi critiche</div><div className="kpi-val" style={{color:so115>25?COL.critStroke:so115>8?COL.warnStroke:COL.okStroke}}>{so115}</div><div className="kpi-sub">Su sedi degradate o in emergenza</div></div>
-        <div className="kpi"><div className="kpi-label">Latenza media</div><div className="kpi-val" style={{color:valColor(avgLat,40,120)}}>{avgLat} ms</div><div className="kpi-sub">Attenzione &gt;40ms | Critica &gt;120ms</div></div>
+      {/* ── Quadranti ── */}
+      <div className="quad-row">
+
+        {/* Q1 – Margine Operativo Rete */}
+        <div className="quad">
+          <div className="quad-title">Margine Operativo Rete</div>
+          <div className="quad-state-label" style={{color: q1LabelColor}}>{q1Label}</div>
+          <div className="quad-bar-track">
+            {q1ok   > 0 && <div className="quad-bar-seg" style={{flex:q1ok,   background:COL.okStroke}}   title={`Operativo: ${q1ok}`} />}
+            {q1warn > 0 && <div className="quad-bar-seg" style={{flex:q1warn, background:COL.warnStroke}} title={`Degradato: ${q1warn}`} />}
+            {q1crit > 0 && <div className="quad-bar-seg" style={{flex:q1crit, background:COL.critStroke}} title={`Emergenza: ${q1crit}`} />}
+          </div>
+          <div className="quad-bar-counts">
+            {q1ok   > 0 && <span style={{color:COL.okStroke}}>{q1ok} op.</span>}
+            {q1warn > 0 && <span style={{color:COL.warnStroke}}>{q1warn} deg.</span>}
+            {q1crit > 0 && <span style={{color:COL.critStroke}}>{q1crit} em.</span>}
+          </div>
+        </div>
+
+        {/* Q2 – Sedi a Rischio */}
+        <div className="quad">
+          <div className="quad-title">Sedi a Rischio Operativo</div>
+          <div className="quad-kpi" style={{color: q2>3?COL.critStroke:q2>0?COL.warnStroke:COL.okStroke}}>{q2}</div>
+          <div className="quad-kpi-label">sedi a rischio operativo</div>
+          <div className="quad-detail">Emergenza + Degradato con SO115 &gt; {SOGLIE.so115_rischio}</div>
+        </div>
+
+        {/* Q3 – Anomalie Operative */}
+        <div className="quad">
+          <div className="quad-title">Anomalie Operative ⚠</div>
+          <div className="quad-kpi" style={{color: q3Color}}>
+            {q3 > 0 ? q3 : '✓'}
+          </div>
+          <div className="quad-kpi-label">{q3 > 0 ? 'sedi con anomalie' : 'Nessuna anomalia'}</div>
+          <div className="quad-detail">Degrado/emergenza senza attività SO115</div>
+        </div>
+
+        {/* Q4 – Tendenza Rete */}
+        <div className="quad">
+          <div className="quad-title">Tendenza Rete (+30 min)</div>
+          <div className="quad-kpi" style={{color: trendColor, fontSize: 28}}>
+            {trendIcon}
+          </div>
+          <div className="quad-kpi-label" style={{color: trendColor, fontWeight:700}}>{trendLabel}</div>
+          <div className="quad-detail">
+            Saturazione media: {Math.round(avgSatNow)}% → {Math.round(avgSatProj)}%
+          </div>
+        </div>
+
       </div>
 
-      {/* Map + Table */}
+      {/* ── Mappa + Tabella ── */}
       <div className="mid-row">
         <div className="map-section">
           <div className="section-title">Mappa connettività — clicca sulle regioni</div>
-          <svg viewBox="0 0 610 793" style={{width:'100%',maxHeight:420,cursor:'pointer'}}>
+          <svg viewBox={viewBox} style={{width:'100%', maxHeight:420, cursor:'pointer'}}>
             {svgRegions.map(r => (
               <path
                 key={r.id}
+                ref={el => { if (el) pathRefs.current[r.italianName] = el; }}
                 d={r.path}
                 fill={getFill(r.italianName)}
                 stroke={getStroke(r.italianName)}
@@ -316,52 +329,60 @@ export default function Dashboard() {
                 onMouseLeave={() => setHoveredRegion(null)}
               />
             ))}
-            {/* Province markers for earthquake */}
             {showProvMarkers && sc.provs.map(p => (
               <g key={p.name}>
-                <circle cx={p.x} cy={p.y} r={12} fill={COL.critStroke} opacity={0.15} />
-                <circle cx={p.x} cy={p.y} r={5} fill={COL.critStroke} stroke="#fff" strokeWidth={1.5} />
+                <circle cx={p.x} cy={p.y} r={12} fill={COL.critStroke} opacity={0.18} />
+                <circle cx={p.x} cy={p.y} r={5}  fill={COL.critStroke} stroke="#fff" strokeWidth={1.5} />
                 <text x={p.x+9} y={p.y+4} fontSize={13} fill="#222" fontWeight={700}
                   stroke="white" strokeWidth={3} paintOrder="stroke">{p.name}</text>
               </g>
             ))}
-            {showProvMarkers && (
+            {showProvMarkers && sc.epicenter && (
               <g>
-                <line x1={EPICENTER.x-7} y1={EPICENTER.y-7} x2={EPICENTER.x+7} y2={EPICENTER.y+7} stroke={COL.critStroke} strokeWidth={3} />
-                <line x1={EPICENTER.x+7} y1={EPICENTER.y-7} x2={EPICENTER.x-7} y2={EPICENTER.y+7} stroke={COL.critStroke} strokeWidth={3} />
-                <text x={EPICENTER.x+10} y={EPICENTER.y-5} fontSize={13} fill={COL.critStroke} fontWeight={700}
+                <line x1={sc.epicenter.x-7} y1={sc.epicenter.y-7} x2={sc.epicenter.x+7} y2={sc.epicenter.y+7} stroke={COL.critStroke} strokeWidth={3} />
+                <line x1={sc.epicenter.x+7} y1={sc.epicenter.y-7} x2={sc.epicenter.x-7} y2={sc.epicenter.y+7} stroke={COL.critStroke} strokeWidth={3} />
+                <text x={sc.epicenter.x+10} y={sc.epicenter.y-5} fontSize={13} fill={COL.critStroke} fontWeight={700}
                   stroke="white" strokeWidth={3} paintOrder="stroke">Epicentro</text>
               </g>
             )}
           </svg>
-          {/* Tooltip */}
           {hoveredRegion && stMap[hoveredRegion] && (
             <div className="map-tooltip">
               <strong>{hoveredRegion}</strong><br/>
-              Stato: {stMap[hoveredRegion]==='ok'?'Operativo':stMap[hoveredRegion]==='warning'?'Degradato':'Emergenza'}
+              <span style={{color: sitStroke(stMap[hoveredRegion])}}>{stMap[hoveredRegion]}</span>
             </div>
           )}
           <div className="legend">
             <span><span className="legend-dot" style={{background:COL.okStroke}} />Operativo</span>
-            <span><span className="legend-dot" style={{background:COL.warnStroke}} />Degrado</span>
+            <span><span className="legend-dot" style={{background:COL.warnStroke}} />Degradato</span>
             <span><span className="legend-dot" style={{background:COL.critStroke}} />Emergenza</span>
             <span><span className="legend-dot" style={{background:COL.excluded}} />Esclusa</span>
           </div>
         </div>
 
         <div className="table-section">
-          <div className="section-title">Dettaglio connettività WAN</div>
+          <div className="section-title">Dettaglio sedi</div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  {[['reg','Sede'],['link','Link / Tipo'],['banda','Banda'],['cap','Cap.'],['util','% Util.'],['latenza','Latenza'],['so115','SO115'],['status','Stato']].map(([col,label]) => {
-                    const sortable = ['reg','banda','util','latenza','so115','status'].includes(col);
+                  {[
+                    ['reg',   'Sede'],
+                    ['link',  'Link / Tipo'],
+                    ['banda', 'Banda'],
+                    ['cap',   'Cap.'],
+                    ['sat',   'Saturaz.'],
+                    ['so115', 'SO115'],
+                    ['sit',   'Situazione'],
+                  ].map(([col,label]) => {
+                    const sortable = ['reg','banda','sat','so115','sit'].includes(col);
                     return (
-                      <th key={col} onClick={sortable ? ()=>toggleSort(col) : undefined}
+                      <th key={col}
+                        onClick={sortable ? () => toggleSort(col) : undefined}
                         style={sortable ? {cursor:'pointer',userSelect:'none',whiteSpace:'nowrap'} : {}}>
                         {label}
-                        {sortable && sortCol===col && <span style={{marginLeft:3,color:'#C1272D'}}>{sortDir==='asc'?'▲':'▼'}</span>}
+                        {sortable && sortCol===col &&
+                          <span style={{marginLeft:3,color:COL.vvf}}>{sortDir==='asc'?'▲':'▼'}</span>}
                       </th>
                     );
                   })}
@@ -369,25 +390,29 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {sorted.map(r => {
-                  const pct = Math.round(r.banda/r.cap*100);
-                  const stLabel = r.status==='ok'?'Operativo':r.status==='warning'?'Degradato':'Emergenza';
-                  const tipoColor = r.tipo==='Fibra'?COL.okStroke:r.tipo==='ADSL'?COL.warnStroke:COL.critStroke;
+                  const tipoColor = r.tipo==='Fibra' ? COL.okStroke : r.tipo==='DSL' ? COL.warnStroke : COL.critStroke;
+                  const sitLabel  = r.sit === 'OPERATIVO' ? 'Operativo' : r.sit === 'DEGRADATO' ? 'Degradato' : 'Emergenza';
+                  const sitClass  = r.sit === 'OPERATIVO' ? 'status-ok' : r.sit === 'DEGRADATO' ? 'status-warning' : 'status-critical';
                   return (
                     <tr key={r.reg}>
                       <td style={{fontWeight:500}}>{r.reg}</td>
                       <td>
-                        <span style={{color:statusStroke(r.status),fontWeight:600}}>{r.link}</span>
+                        <span style={{color:sitStroke(r.sit), fontWeight:600}}>{r.link}</span>
                         <span className="link-tipo" style={{color:tipoColor}}>{r.tipo}</span>
                       </td>
                       <td>{r.banda} Mbps</td>
                       <td style={{color:'#aaa'}}>{r.cap} Mbps</td>
                       <td>
-                        <div className="bar-bg"><div className="bar-fill" style={{width:`${pct}%`,background:valColor(pct,55,80)}} /></div>
-                        <span style={{marginLeft:4}}>{pct}%</span>
+                        <div className="bar-bg">
+                          <div className="bar-fill" style={{
+                            width: `${Math.min(r.sat,100)}%`,
+                            background: r.sat>=80?COL.critStroke:r.sat>=50?COL.warnStroke:COL.okStroke
+                          }} />
+                        </div>
+                        <span style={{marginLeft:4}}>{r.sat}%</span>
                       </td>
-                      <td style={{color:valColor(r.latenza,40,120)}}>{r.latenza} ms</td>
                       <td style={{textAlign:'center',fontWeight:500,color:r.so115>15?COL.critStroke:r.so115>5?COL.warnStroke:'#aaa'}}>{r.so115}</td>
-                      <td><span className={`status-pill status-${r.status}`}>{stLabel}</span></td>
+                      <td><span className={`status-pill ${sitClass}`}>{sitLabel}</span></td>
                     </tr>
                   );
                 })}
@@ -397,7 +422,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Charts */}
+      {/* ── Grafici ── */}
       <div className="bottom-row">
         <div>
           <div className="section-title">Trend latenza e packet loss (30 min)</div>
@@ -409,18 +434,18 @@ export default function Dashboard() {
             <LineChart data={trendData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="name" tick={{fontSize:11,fill:'#999'}} interval={4} />
-              <YAxis yAxisId="left" tick={{fontSize:11,fill:'#999'}} label={{value:'ms',position:'insideLeft',fontSize:11,fill:'#999'}} />
-              <YAxis yAxisId="right" orientation="right" tick={{fontSize:11,fill:'#999'}} label={{value:'%loss',position:'insideRight',fontSize:11,fill:'#999'}} />
+              <YAxis yAxisId="left"  tick={{fontSize:11,fill:'#999'}} label={{value:'ms',    position:'insideLeft',  fontSize:11,fill:'#999'}} />
+              <YAxis yAxisId="right" orientation="right" tick={{fontSize:11,fill:'#999'}} label={{value:'%loss', position:'insideRight', fontSize:11,fill:'#999'}} />
               <Tooltip />
-              <Line yAxisId="left" type="monotone" dataKey="latenza" stroke={COL.vvf} strokeWidth={1.5} dot={false} />
-              <Line yAxisId="right" type="monotone" dataKey="pktLoss" stroke="#1976d2" strokeWidth={1.5} dot={false} />
+              <Line yAxisId="left"  type="monotone" dataKey="latenza"  stroke={COL.vvf}    strokeWidth={1.5} dot={false} />
+              <Line yAxisId="right" type="monotone" dataKey="pktLoss"  stroke="#1976d2"    strokeWidth={1.5} dot={false} />
             </LineChart>
           </ResponsiveContainer>
         </div>
         <div>
-          <div className="section-title">Proiezione saturazione banda</div>
+          <div className="section-title">Saturazione banda per sede — % sul link attivo</div>
           <div className="chart-legend">
-            <span><span className="chart-dot" style={{background:COL.vvf}} />Attuale</span>
+            <span><span className="chart-dot" style={{background:COL.vvf}} />Attuale (%)</span>
             <span><span className="chart-dot" style={{background:'rgba(193,39,45,0.25)'}} />Proiezione +30min</span>
           </div>
           <ResponsiveContainer width="100%" height={160}>
@@ -428,13 +453,14 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="name" tick={{fontSize:10,fill:'#999'}} angle={-45} textAnchor="end" height={55} />
               <YAxis tick={{fontSize:11,fill:'#999'}} domain={[0,100]} tickFormatter={v=>`${v}%`} />
-              <Tooltip />
-              <Bar dataKey="attuale" fill={COL.vvf} radius={[2,2,0,0]} />
-              <Bar dataKey="proiezione" fill="rgba(193,39,45,0.2)" radius={[2,2,0,0]} />
+              <Tooltip formatter={v=>`${v}%`} />
+              <Bar dataKey="attuale"    fill={COL.vvf}                  radius={[2,2,0,0]} />
+              <Bar dataKey="proiezione" fill="rgba(193,39,45,0.22)"     radius={[2,2,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
+
     </div>
   );
 }

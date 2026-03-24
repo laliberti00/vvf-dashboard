@@ -40,11 +40,17 @@
 .sleg-item { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #555; }
 .sleg-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 
-.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; padding: 0 16px; }
-.kpi { background: #fafafa; border-radius: 6px; padding: 10px 12px; border-left: 4px solid #C1272D; }
-.kpi-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.3px; }
-.kpi-val { font-size: 22px; font-weight: 700; margin: 3px 0; transition: color 0.3s; }
-.kpi-sub { font-size: 11px; color: #aaa; }
+/* ── Quadranti ─────────────────────────────────────────────────────────────── */
+.quad-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 12px; padding: 0 16px; }
+.quad { background: #fafafa; border-radius: 8px; padding: 14px 16px; border-left: 4px solid #C1272D; display: flex; flex-direction: column; gap: 6px; }
+.quad-title { font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.4px; }
+.quad-state-label { font-size: 20px; font-weight: 800; letter-spacing: 0.5px; }
+.quad-bar-track { display: flex; height: 12px; border-radius: 6px; overflow: hidden; gap: 2px; }
+.quad-bar-seg { height: 100%; border-radius: 3px; transition: flex 0.4s; opacity: 0.85; }
+.quad-bar-counts { display: flex; gap: 10px; font-size: 11px; font-weight: 600; }
+.quad-kpi { font-size: 36px; font-weight: 800; line-height: 1; }
+.quad-kpi-label { font-size: 12px; color: #666; }
+.quad-detail { font-size: 10px; color: #aaa; margin-top: 2px; }
 
 .mid-row { display: grid; grid-template-columns: 360px 1fr; gap: 14px; margin-bottom: 12px; padding: 0 16px; }
 .section-title { font-size: 13px; font-weight: 700; margin-bottom: 6px; color: #333; }
@@ -70,7 +76,8 @@ tr:hover { background: #fafafa; }
 .status-warning { background: #fff8e1; color: #ff9800; }
 .status-critical { background: #fce4ec; color: #ef5350; }
 
-.bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 16px; }
+.bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; padding: 0 16px; margin-top: 12px; }
 .chart-legend { display: flex; gap: 14px; margin-bottom: 6px; font-size: 11px; color: #666; }
 .chart-legend span { display: flex; align-items: center; gap: 4px; }
 .chart-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+

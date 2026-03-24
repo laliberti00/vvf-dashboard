@@ -1,0 +1,14 @@
+{
+  "files": {
+    "main.css": "/static/css/main.1753b139.css",
+    "main.js": "/static/js/main.bb81e032.js",
+    "static/media/logo_vvf.png": "/static/media/logo_vvf.87fcd32aa86d44dd1cc5.png",
+    "index.html": "/index.html",
+    "main.1753b139.css.map": "/static/css/main.1753b139.css.map",
+    "main.bb81e032.js.map": "/static/js/main.bb81e032.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.1753b139.css",
+    "static/js/main.bb81e032.js"
+  ]
+}
