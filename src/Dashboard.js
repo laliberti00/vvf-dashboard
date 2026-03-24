@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import regionsRaw from './italyRegions.json';
 import logoVvf from './logo_vvf.png';
@@ -44,9 +44,12 @@ const COL = {
 
 function rn(a, b) { return Math.round(a + Math.random() * (b - a)); }
 
+// Capacità per tipo link: Fibra=100, ADSL=20, LTE=10
+const CAP = { fibra: 100, adsl: 20, lte: 10 };
+
 function generateNormalData() {
   return ACTIVE_REGIONS.map(reg => ({
-    reg, link: 'UP', banda: rn(12,35), cap: 100, latenza: rn(4,16),
+    reg, link: 'UP', tipo: 'Fibra', banda: rn(12,35), cap: CAP.fibra, latenza: rn(4,16),
     pktLoss: +(Math.random()*0.4).toFixed(1), so115: rn(0,3), status: 'ok'
   }));
 }
@@ -56,13 +59,17 @@ function generateEmergencyData() {
   const warn = ['Toscana','Molise'];
   return ACTIVE_REGIONS.map(reg => {
     const c = crit.includes(reg), w = warn.includes(reg);
+    // LTE cap=10 → banda 7-10 Mbps (saturo); ADSL cap=20 → banda 14-19 Mbps (saturo); Fibra=normale
     return {
-      reg, link: c?'DOWN':w?'DEGRADATO':'UP',
-      banda: c?rn(90,100):w?rn(65,80):rn(12,40), cap: 100,
-      latenza: c?rn(180,400):w?rn(55,90):rn(5,20),
-      pktLoss: c?+(6+Math.random()*8).toFixed(1):w?+(1.5+Math.random()*3).toFixed(1):+(Math.random()*0.5).toFixed(1),
-      so115: c?rn(18,35):w?rn(6,14):rn(0,4),
-      status: c?'critical':w?'warning':'ok'
+      reg,
+      link: c ? 'DOWN' : w ? 'DEGRADATO' : 'UP',
+      tipo: c ? 'LTE' : w ? 'ADSL' : 'Fibra',
+      banda: c ? rn(7,10) : w ? rn(14,19) : rn(12,40),
+      cap: c ? CAP.lte : w ? CAP.adsl : CAP.fibra,
+      latenza: c ? rn(180,400) : w ? rn(55,90) : rn(5,20),
+      pktLoss: c ? +(6+Math.random()*8).toFixed(1) : w ? +(1.5+Math.random()*3).toFixed(1) : +(Math.random()*0.5).toFixed(1),
+      so115: c ? rn(18,35) : w ? rn(6,14) : rn(0,4),
+      status: c ? 'critical' : w ? 'warning' : 'ok'
     };
   });
 }
@@ -89,9 +96,24 @@ function valColor(v,w,c) { return v>=c?COL.critStroke:v>=w?COL.warnStroke:COL.ok
 export default function Dashboard() {
   const [scenario, setScenario] = useState('normal');
   const [selected, setSelected] = useState(new Set());
+  const [statusFilters, setStatusFilters] = useState(new Set(['ok','warning','critical']));
+  const [regionDropOpen, setRegionDropOpen] = useState(false);
+  const [statusDropOpen, setStatusDropOpen] = useState(false);
   const [hoveredRegion, setHoveredRegion] = useState(null);
   const [sortCol, setSortCol] = useState('status');
   const [sortDir, setSortDir] = useState('asc');
+
+  const regionDropRef = useRef(null);
+  const statusDropRef = useRef(null);
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (regionDropRef.current && !regionDropRef.current.contains(e.target)) setRegionDropOpen(false);
+      if (statusDropRef.current && !statusDropRef.current.contains(e.target)) setStatusDropOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
 
   const sc = SCENARIOS[scenario];
   const stMap = useMemo(() => {
@@ -101,7 +123,20 @@ export default function Dashboard() {
   }, [sc.data]);
 
   const hasSel = selected.size > 0;
-  const filtered = hasSel ? sc.data.filter(r => selected.has(r.reg)) : sc.data;
+  const allStatusSelected = statusFilters.size === 3;
+  const filtered = sc.data.filter(r => {
+    if (hasSel && !selected.has(r.reg)) return false;
+    if (!allStatusSelected && !statusFilters.has(r.status)) return false;
+    return true;
+  });
+
+  function toggleStatusFilter(st) {
+    setStatusFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(st)) { if (next.size > 1) next.delete(st); } else next.add(st);
+      return next;
+    });
+  }
 
   function toggleSort(col) {
     if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -133,7 +168,12 @@ export default function Dashboard() {
 
   // Chart data
   const trendData = sc.latT.map((lat,i) => ({ name: `-${30-i}m`, latenza: lat, pktLoss: sc.pktT[i] }));
-  const satData = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => ({ name: r.reg, attuale: r.banda, proiezione: Math.min(100, Math.round(r.banda*1.18+rn(0,5))) }));
+  // Saturazione: % di utilizzo sul link attivo (Fibra/ADSL/LTE)
+  const satData = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => {
+    const pctAtt = Math.round(r.banda / r.cap * 100);
+    const pctProj = Math.min(100, Math.round(pctAtt * 1.15 + rn(0,5)));
+    return { name: r.reg, attuale: pctAtt, proiezione: pctProj };
+  });
 
   function toggleRegion(reg) {
     if (!ACTIVE_REGIONS.includes(reg)) return;
@@ -146,7 +186,7 @@ export default function Dashboard() {
 
   function clearSelection() { setSelected(new Set()); }
 
-  function switchScenario(sc) { setScenario(sc); setSelected(new Set()); }
+  function switchScenario(sc) { setScenario(sc); setSelected(new Set()); setStatusFilters(new Set(['ok','warning','critical'])); }
 
   function getFill(italianName) {
     if (EXCLUDED.includes(italianName)) return COL.excluded;
@@ -194,15 +234,59 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Region tags filter */}
+      {/* Filters + Legend */}
       <div className="filter-bar">
-        <span className="filter-label">Regioni:</span>
-        <div className="tags">
-          {ACTIVE_REGIONS.map(r => (
-            <span key={r} className={`tag ${selected.has(r)?'active':''}`} onClick={()=>toggleRegion(r)}>{r}</span>
-          ))}
+        {/* Regioni multi-select */}
+        <div className="msel-wrap" ref={regionDropRef}>
+          <span className="filter-label">Regioni:</span>
+          <button className="msel-btn" onClick={() => setRegionDropOpen(o => !o)}>
+            {selected.size === 0 ? 'Tutte le regioni' : `${selected.size} selezionate`}
+            <span className="msel-arrow">{regionDropOpen ? '▲' : '▼'}</span>
+          </button>
+          {hasSel && <span className="reset" onClick={clearSelection}>✕ Reset</span>}
+          {regionDropOpen && (
+            <div className="msel-dropdown">
+              {ACTIVE_REGIONS.map(r => (
+                <label key={r} className="msel-option">
+                  <input type="checkbox" checked={selected.has(r)} onChange={() => toggleRegion(r)} />
+                  {r}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
-        {hasSel && <span className="reset" onClick={clearSelection}>Reset</span>}
+
+        <div className="filter-sep" />
+
+        {/* Stato multi-select */}
+        <div className="msel-wrap" ref={statusDropRef}>
+          <span className="filter-label">Stato:</span>
+          <button className="msel-btn" onClick={() => setStatusDropOpen(o => !o)}>
+            {allStatusSelected ? 'Tutti gli stati' : [...statusFilters].map(s => s==='ok'?'Operativo':s==='warning'?'Degradato':'Emergenza').join(', ')}
+            <span className="msel-arrow">{statusDropOpen ? '▲' : '▼'}</span>
+          </button>
+          {!allStatusSelected && <span className="reset" onClick={() => setStatusFilters(new Set(['ok','warning','critical']))}>✕ Reset</span>}
+          {statusDropOpen && (
+            <div className="msel-dropdown">
+              {[['ok','Operativo',COL.okStroke],['warning','Degradato',COL.warnStroke],['critical','Emergenza',COL.critStroke]].map(([val,label,color]) => (
+                <label key={val} className="msel-option">
+                  <input type="checkbox" checked={statusFilters.has(val)} onChange={() => toggleStatusFilter(val)} />
+                  <span className="msel-dot" style={{background:color}} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="filter-sep" />
+
+        {/* Legenda stati */}
+        <div className="status-legend">
+          <div className="sleg-item"><span className="sleg-dot" style={{background:COL.critStroke}} /><span><strong>Emergenza:</strong> sede su LTE oppure saturazione ≥ 80%</span></div>
+          <div className="sleg-item"><span className="sleg-dot" style={{background:COL.warnStroke}} /><span><strong>Degradato:</strong> sede su ADSL oppure saturazione 50–80%</span></div>
+          <div className="sleg-item"><span className="sleg-dot" style={{background:COL.okStroke}} /><span><strong>Operativo:</strong> fibra attiva, saturazione &lt; 50%</span></div>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -271,7 +355,7 @@ export default function Dashboard() {
             <table>
               <thead>
                 <tr>
-                  {[['reg','Sede'],['link','Link MPLS'],['banda','Banda'],['cap','Cap.'],['util','% Util.'],['latenza','Latenza'],['so115','SO115'],['status','Stato']].map(([col,label]) => {
+                  {[['reg','Sede'],['link','Link / Tipo'],['banda','Banda'],['cap','Cap.'],['util','% Util.'],['latenza','Latenza'],['so115','SO115'],['status','Stato']].map(([col,label]) => {
                     const sortable = ['reg','banda','util','latenza','so115','status'].includes(col);
                     return (
                       <th key={col} onClick={sortable ? ()=>toggleSort(col) : undefined}
@@ -287,12 +371,16 @@ export default function Dashboard() {
                 {sorted.map(r => {
                   const pct = Math.round(r.banda/r.cap*100);
                   const stLabel = r.status==='ok'?'Operativo':r.status==='warning'?'Degradato':'Emergenza';
+                  const tipoColor = r.tipo==='Fibra'?COL.okStroke:r.tipo==='ADSL'?COL.warnStroke:COL.critStroke;
                   return (
                     <tr key={r.reg}>
                       <td style={{fontWeight:500}}>{r.reg}</td>
-                      <td><span style={{color:statusStroke(r.status),fontWeight:500}}>{r.link}</span></td>
+                      <td>
+                        <span style={{color:statusStroke(r.status),fontWeight:600}}>{r.link}</span>
+                        <span className="link-tipo" style={{color:tipoColor}}>{r.tipo}</span>
+                      </td>
                       <td>{r.banda} Mbps</td>
-                      <td>{r.cap} Mbps</td>
+                      <td style={{color:'#aaa'}}>{r.cap} Mbps</td>
                       <td>
                         <div className="bar-bg"><div className="bar-fill" style={{width:`${pct}%`,background:valColor(pct,55,80)}} /></div>
                         <span style={{marginLeft:4}}>{pct}%</span>
