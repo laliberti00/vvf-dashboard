@@ -87,3 +87,106 @@ tr:hover { background: #fafafa; }
 .chart-legend span { display: flex; align-items: center; gap: 4px; }
 .chart-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 
+/* ── Pannello dettaglio regione ─────────────────────────────────────────────── */
+.region-panel {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 430px;
+  background: #fff; z-index: 500;
+  box-shadow: -4px 0 24px rgba(0,0,0,0.18);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+  animation: slideInPanel 0.22s ease;
+}
+@keyframes slideInPanel {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.region-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(to right, #C1272D 50%, rgba(193,39,45,0.85) 100%);
+  padding: 14px 16px; flex-shrink: 0;
+}
+.region-panel-title {
+  font-size: 15px; font-weight: 700; color: #fff; letter-spacing: 0.5px;
+  font-family: 'Oswald', 'Arial Narrow', Arial, sans-serif; text-transform: uppercase;
+}
+.panel-close {
+  background: none; border: none; color: #fff; font-size: 18px; cursor: pointer;
+  padding: 2px 6px; border-radius: 4px; line-height: 1;
+}
+.panel-close:hover { background: rgba(255,255,255,0.2); }
+
+.region-panel-scroll { flex: 1; overflow-y: auto; padding: 0 0 16px 0; }
+
+.panel-codem-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 14px; background: #fff8e1; border-bottom: 1px solid #ffe082;
+  font-size: 12px;
+}
+.panel-codem-code { font-weight: 800; color: #C1272D; font-size: 13px; font-family: monospace; }
+.panel-codem-evento { flex: 1; color: #333; font-weight: 600; }
+.panel-codem-livello {
+  background: #1976d2; color: #fff; padding: 2px 8px;
+  border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+}
+.panel-codem-attivo {
+  background: #4caf50; color: #fff; padding: 2px 8px;
+  border-radius: 10px; font-size: 10px; font-weight: 700;
+}
+
+.panel-no-supreme {
+  padding: 8px 14px; background: #f5f5f5; border-bottom: 1px solid #eee;
+  font-size: 11px; color: #888; font-style: italic;
+}
+
+.panel-section-title {
+  font-size: 11px; font-weight: 700; color: #888; text-transform: uppercase;
+  letter-spacing: 0.4px; padding: 12px 14px 6px; border-bottom: 1px solid #f0f0f0;
+}
+
+.panel-table-wrap { overflow-x: auto; }
+.panel-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+.panel-table th {
+  text-align: left; padding: 5px 10px; color: #aaa; font-weight: 600;
+  border-bottom: 1px solid #eee; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.2px; position: sticky; top: 0; background: #fff;
+}
+.panel-table td { padding: 5px 10px; border-bottom: 1px solid #f8f8f8; }
+.panel-table tr:hover td { background: #fafafa; }
+
+/* Moduli CMR */
+.panel-moduli-list { padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; }
+.panel-no-moduli { padding: 10px 14px; font-size: 11px; color: #aaa; font-style: italic; }
+
+.supreme-mod-card {
+  border: 1px solid #eee; border-radius: 6px; padding: 10px 12px;
+  background: #fafafa; display: flex; flex-direction: column; gap: 4px;
+}
+.mod-card-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mod-tipo-badge {
+  font-weight: 800; font-size: 12px; color: #333; background: #e8e8e8;
+  padding: 2px 8px; border-radius: 4px; font-family: monospace; letter-spacing: 0.5px;
+}
+.mod-pill {
+  padding: 2px 10px; border-radius: 10px; font-size: 10px; font-weight: 700; color: #fff;
+}
+.mod-fase { font-size: 10px; color: #888; margin-left: auto; }
+.mod-dest { font-size: 11px; color: #555; }
+.mod-detail { font-size: 11px; color: #666; }
+.mod-warn { color: #ff9800; font-weight: 600; }
+.mod-impedimento {
+  font-size: 11px; color: #ef5350; font-weight: 600;
+  background: #fce4ec; border-radius: 4px; padding: 3px 8px; margin-top: 2px;
+}
+
+/* Raccomandazione */
+.raccomandazione-box {
+  margin: 10px 14px 4px; border-radius: 6px; padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.raccomandazione-box.racc-urgente  { background: #fce4ec; border-left: 4px solid #ef5350; }
+.raccomandazione-box.racc-attenzione { background: #fff8e1; border-left: 4px solid #ff9800; }
+.raccomandazione-box.racc-info     { background: #e3f2fd; border-left: 4px solid #1976d2; }
+.racc-title { font-size: 11px; font-weight: 700; color: #333; text-transform: uppercase; letter-spacing: 0.3px; }
+.racc-testo { font-size: 12px; color: #444; line-height: 1.5; }
+

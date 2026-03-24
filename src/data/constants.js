@@ -65,3 +65,42 @@ export const COL = {
 
 // ── Ordinamento situazione ────────────────────────────────────────────────────
 export const SIT_ORDER = { EMERGENZA: 0, DEGRADATO: 1, OPERATIVO: 2 };
+
+// ── Province per regione (Comandi Provinciali CNVVF) ──────────────────────────
+export const PROVINCE = {
+  'Piemonte':              ['Torino','Cuneo','Asti','Alessandria','Novara','Biella','Vercelli','Verbano-Cusio-Ossola'],
+  'Liguria':               ['Genova','La Spezia','Savona','Imperia'],
+  'Lombardia':             ['Milano','Bergamo','Brescia','Como','Cremona','Lecco','Lodi','Mantova','Monza-Brianza','Pavia','Sondrio','Varese'],
+  'Veneto':                ['Venezia','Verona','Vicenza','Padova','Treviso','Belluno','Rovigo'],
+  'Friuli-Venezia Giulia': ['Trieste','Udine','Pordenone','Gorizia'],
+  'Emilia-Romagna':        ['Bologna','Modena','Parma','Reggio Emilia','Ferrara','Ravenna','Rimini','Forlì-Cesena','Piacenza'],
+  'Toscana':               ['Firenze','Siena','Pisa','Livorno','Arezzo','Grosseto','Pistoia','Prato','Massa-Carrara','Lucca'],
+  'Umbria':                ['Perugia','Terni'],
+  'Marche':                ['Ancona','Pesaro-Urbino','Ascoli Piceno','Fermo','Macerata'],
+  'Lazio':                 ['Roma','Latina','Frosinone','Viterbo','Rieti'],
+  'Abruzzo':               ["L'Aquila",'Chieti','Pescara','Teramo'],
+  'Molise':                ['Campobasso','Isernia'],
+  'Campania':              ['Napoli','Salerno','Avellino','Benevento','Caserta'],
+  'Puglia':                ['Bari','Foggia','Brindisi','Lecce','Taranto','Barletta-Andria-Trani'],
+  'Basilicata':            ['Potenza','Matera'],
+  'Calabria':              ['Reggio Calabria','Catanzaro','Cosenza','Crotone','Vibo Valentia'],
+  'Sicilia':               ['Palermo','Catania','Messina','Siracusa','Trapani','Agrigento','Caltanissetta','Ragusa','Enna'],
+  'Sardegna':              ['Cagliari','Sassari','Nuoro','Oristano','Sud Sardegna'],
+};
+
+// ── Moduli CMR — stati e colori ───────────────────────────────────────────────
+export const MOD_STATO_LABEL = {
+  DISPIEGATO:   'Dispiegato',
+  IN_PARTENZA:  'In Partenza',
+  ALLERTATO:    'Allertato',
+  NON_ATTIVATO: 'Non Attivato',
+  IMPEDITO:     'Impedito',
+};
+
+export const MOD_STATO_COLOR = {
+  DISPIEGATO:   '#4caf50',
+  IN_PARTENZA:  '#ff9800',
+  ALLERTATO:    '#1976d2',
+  NON_ATTIVATO: '#999',
+  IMPEDITO:     '#ef5350',
+};

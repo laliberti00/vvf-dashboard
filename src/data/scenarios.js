@@ -1,62 +1,133 @@
-import { ACTIVE_REGIONS, CAP } from './constants';
+import { ACTIVE_REGIONS, CAP, PROVINCE } from './constants';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function rn(a, b) { return Math.round(a + Math.random() * (b - a)); }
 function rf(a, b) { return +((a + Math.random() * (b - a)).toFixed(2)); }
 
 // ── Trend per sede ────────────────────────────────────────────────────────────
-// Genera 30 campioni {latenza, pktLoss} realistici in funzione del tipo e della
-// saturazione della sede. Usato per il grafico trend vincolato alla selezione.
 function generateSiteTrend(tipo, sat) {
   return Array.from({ length: 30 }, (_, i) => {
     let latenza, pktLoss;
-
     if (tipo === 'LTE') {
-      // Latenza alta e in leggero peggioramento nel tempo
       latenza = Math.min(500, Math.round(160 + i * 4 + rn(-15, 25)));
       pktLoss = rf(5, 13);
     } else if (tipo === 'DSL') {
-      // Latenza media, packet loss moderato
       latenza = rn(45, 90);
       pktLoss = rf(1.0, 4.0);
     } else if (sat >= 80) {
-      // Fibra satura: latenza crescente (anomalia/congestione)
       latenza = Math.min(400, Math.round(35 + i * 2.8 + rn(-8, 18)));
       pktLoss = rf(2.0, 8.0);
     } else if (sat >= 50) {
-      // Fibra sotto stress
       latenza = rn(15, 45);
       pktLoss = rf(0.3, 1.5);
     } else {
-      // Fibra ok
       latenza = rn(4, 18);
       pktLoss = rf(0.0, 0.4);
     }
-
     return { latenza, pktLoss };
   });
 }
 
-// ── Builder sede ──────────────────────────────────────────────────────────────
-// Costruisce un oggetto sede normalizzato. Il campo `sat` viene precalcolato
-// per passarlo a generateSiteTrend; la Dashboard lo ricalcola tramite getSituation
-// per avere sit/sat sempre derivati dalla stessa funzione.
-function buildSite(reg, tipo, banda, pktLoss, so115) {
-  const cap = CAP[tipo];
-  const sat = Math.round(banda / cap * 100);
-  return { reg, tipo, banda, cap, pktLoss, so115, trend: generateSiteTrend(tipo, sat) };
+// ── Builder provincia ─────────────────────────────────────────────────────────
+function buildProv(prov, tipo, banda, pktLoss, so115, distaccamenti) {
+  return { prov, tipo, banda, cap: CAP[tipo], pktLoss, so115, distaccamenti };
 }
 
-// ── Marcatori mappa ───────────────────────────────────────────────────────────
-const PROV_MARKERS_SISMA_2016 = [
-  { name: 'Rieti',     x: 340, y: 370 },
-  { name: 'Perugia',   x: 305, y: 330 },
-  { name: 'Ascoli P.', x: 380, y: 325 },
-  { name: 'Teramo',    x: 375, y: 310 },
-  { name: "L'Aquila",  x: 350, y: 340 },
-  { name: 'Macerata',  x: 365, y: 300 },
+// ── Province di default (fibra normale) ───────────────────────────────────────
+function generateDefaultProvinces(reg) {
+  return (PROVINCE[reg] || []).map(prov =>
+    buildProv(prov, 'Fibra', rn(8, 25), rf(0.0, 0.3), rn(0, 2), rn(4, 12))
+  );
+}
+
+// ── Builder sede ──────────────────────────────────────────────────────────────
+function buildSite(reg, tipo, banda, pktLoss, so115, province = null) {
+  const cap = CAP[tipo];
+  const sat = Math.round(banda / cap * 100);
+  return {
+    reg, tipo, banda, cap, pktLoss, so115,
+    trend:    generateSiteTrend(tipo, sat),
+    province: province !== null ? province : generateDefaultProvinces(reg),
+  };
+}
+
+// ── Province personalizzate per scenario Niscemi (Sicilia) ────────────────────
+const PROV_NISCEMI_SICILIA = [
+  buildProv('Caltanissetta', 'LTE',   3,           rf(7.0, 12.0), rn(24, 30), 6),
+  buildProv('Agrigento',     'DSL',   6,           rf(1.5,  3.5), rn(8,  14), 8),
+  buildProv('Ragusa',        'DSL',   7,           rf(1.0,  3.0), rn(6,  10), 7),
+  buildProv('Palermo',       'Fibra', rn(15, 25),  rf(0.0,  0.3), rn(1,   3), 15),
+  buildProv('Catania',       'Fibra', rn(12, 22),  rf(0.0,  0.3), rn(0,   2), 12),
+  buildProv('Messina',       'Fibra', rn(10, 20),  rf(0.0,  0.3), rn(0,   2), 11),
+  buildProv('Siracusa',      'Fibra', rn(8,  18),  rf(0.0,  0.3), rn(0,   2), 7),
+  buildProv('Trapani',       'Fibra', rn(8,  16),  rf(0.0,  0.3), rn(0,   2), 8),
+  buildProv('Enna',          'Fibra', rn(6,  14),  rf(0.0,  0.3), rn(0,   2), 5),
 ];
-const EPICENTER_SISMA_2016 = { x: 362, y: 332 };
+
+// ── Province personalizzate per scenario Anomalia Calabria ────────────────────
+const PROV_ANOMALIA_CALABRIA = [
+  buildProv('Reggio Calabria', 'Fibra', rn(88, 93), rf(3.0, 8.0), 0, 10),
+  buildProv('Catanzaro',       'Fibra', rn(84, 91), rf(2.5, 7.0), 0, 7),
+  buildProv('Cosenza',         'Fibra', rn(10, 25), rf(0.0, 0.3), rn(0, 2), 9),
+  buildProv('Crotone',         'DSL',   rn(6,  8),  rf(1.5, 4.0), 0, 5),
+  buildProv('Vibo Valentia',   'Fibra', rn(8,  20), rf(0.0, 0.3), rn(0, 2), 4),
+];
+
+// ── Marcatori mappa ───────────────────────────────────────────────────────────
+const PROV_MARKERS_NISCEMI = [
+  { name: 'Caltanissetta', x: 393, y: 657 },
+  { name: 'Agrigento',     x: 362, y: 668 },
+  { name: 'Ragusa',        x: 415, y: 672 },
+];
+const EPICENTER_NISCEMI = { x: 407, y: 665 }; // Niscemi (CL)
+
+// ── SUPREME — struttura vuota (nessuna emergenza) ─────────────────────────────
+const SUPREME_VUOTO = { codem: null, evento: null, livello: null, moduli: [] };
+
+// ── SUPREME — Frana di Niscemi ────────────────────────────────────────────────
+const SUPREME_NISCEMI = {
+  codem:   'EM-2025-031',
+  evento:  'Frana di Niscemi (CL)',
+  livello: 'S2_Regionale',
+  moduli: [
+    {
+      tipo:         'MS.ICT',
+      stato:        'ALLERTATO',
+      fase:         'Potenziamento',
+      regione:      'Sicilia',
+      origine:      'Palermo',
+      destinazione: 'DOA — Caltanissetta',
+      personale:    { disponibile: 5, totale: 6 },
+      mezzi:        { prt: true, crt: true, auto: false },
+      autonomia_gg: 7,
+      impedimento:  'Veicolo leggero in manutenzione',
+    },
+    {
+      tipo:         'MS.COEM',
+      stato:        'IN_PARTENZA',
+      fase:         'Potenziamento',
+      regione:      'Sicilia',
+      origine:      'Catania',
+      destinazione: 'DOA — Caltanissetta',
+      personale:    { disponibile: 2, totale: 2 },
+      mezzi:        null,
+      autonomia_gg: 7,
+      impedimento:  null,
+    },
+    {
+      tipo:         'MS.TAST',
+      stato:        'DISPIEGATO',
+      fase:         'Immediata',
+      regione:      'Sicilia',
+      origine:      'Palermo',
+      destinazione: 'DOA — Caltanissetta',
+      personale:    { disponibile: 1, totale: 1 },
+      mezzi:        null,
+      autonomia_gg: 7,
+      impedimento:  null,
+    },
+  ],
+};
 
 // ── SCENARIO 1: Normale ───────────────────────────────────────────────────────
 function generateNormal() {
@@ -65,51 +136,31 @@ function generateNormal() {
   );
 }
 
-// ── SCENARIO 2: Sisma Centro Italia 24/08/2016 ────────────────────────────────
-function generateSisma2016() {
-  const critiche  = ['Lazio', 'Umbria', 'Marche', 'Abruzzo']; // → LTE
-  const degradate = ['Toscana', 'Molise'];                     // → DSL
-
+// ── SCENARIO 2: Frana di Niscemi (CL) — 2025 ─────────────────────────────────
+function generateNiscemi() {
   return ACTIVE_REGIONS.map(reg => {
-    if (critiche.includes(reg))
-      return buildSite(reg, 'LTE',   rn(3, 4),  rf(5.0, 14.0), rn(18, 35));
-    if (degradate.includes(reg))
-      return buildSite(reg, 'DSL',   rn(5, 7),  rf(1.0,  4.0), rn(6,  14));
-    return   buildSite(reg, 'Fibra', rn(8, 35), rf(0.0,  0.4), rn(0,   4));
+    if (reg === 'Sicilia')
+      return buildSite(reg, 'LTE',   rn(3, 4),  rf(5.0, 14.0), rn(22, 30), PROV_NISCEMI_SICILIA);
+    return buildSite(reg, 'Fibra', rn(8, 35), rf(0.0,  0.4),  rn(0,  4));
   });
 }
 
 // ── SCENARIO 3: Anomalia Operativa — Attacco Informatico (Calabria) ───────────
-// Tre sedi con degrado/emergenza da saturazione Fibra, senza alcun intervento
-// SO115 a giustificarlo → alta presenza in Q3 (anomalie operative).
-// Dimostra che EMERGENZA può derivare da saturazione e non solo da tecnologia LTE.
 function generateAnomaliaCalabria() {
   const anomale = {
-    // EMERGENZA da saturazione (Fibra ≥ 80%): nessun evento giustificante
-    'Calabria': { tipo: 'Fibra', banda: rn(88, 93), pktLoss: rf(3.0, 8.0), so115: 0 },
-    'Sicilia':  { tipo: 'Fibra', banda: rn(84, 91), pktLoss: rf(2.5, 7.0), so115: 0 },
-    // DEGRADATO/EMERGENZA su DSL senza SO115
-    'Puglia':   { tipo: 'DSL',   banda: rn(7,  8),  pktLoss: rf(1.5, 4.0), so115: 0 },
+    'Calabria': { tipo: 'Fibra', banda: rn(88, 93), pktLoss: rf(3.0, 8.0), so115: 0, province: PROV_ANOMALIA_CALABRIA },
+    'Sicilia':  { tipo: 'Fibra', banda: rn(84, 91), pktLoss: rf(2.5, 7.0), so115: 0, province: null },
+    'Puglia':   { tipo: 'DSL',   banda: rn(7,  8),  pktLoss: rf(1.5, 4.0), so115: 0, province: null },
   };
 
   return ACTIVE_REGIONS.map(reg => {
     const a = anomale[reg];
-    if (a) return buildSite(reg, a.tipo, a.banda, a.pktLoss, a.so115);
+    if (a) return buildSite(reg, a.tipo, a.banda, a.pktLoss, a.so115, a.province);
     return buildSite(reg, 'Fibra', rn(8, 30), rf(0.0, 0.4), rn(0, 3));
   });
 }
 
 // ── Registro scenari ──────────────────────────────────────────────────────────
-// Per aggiungere un nuovo scenario: definire una funzione generate* e aggiungere
-// una voce qui. Dashboard.js non va mai modificato.
-//
-// Struttura di uno scenario:
-//   id, label, badge, badgeClass
-//   data:            array[18] di sedi — ogni sede: { reg, tipo, banda, cap, pktLoss, so115, trend[30] }
-//   provs:           marcatori mappa [ { name, x, y } ] ([] se nessuno)
-//   epicenter:       { x, y } | null
-//   criticalRegions: nomi regioni per zoom automatico su selezione
-//
 export const SCENARIOS = {
   normal: {
     id:              'normal',
@@ -120,17 +171,19 @@ export const SCENARIOS = {
     provs:           [],
     epicenter:       null,
     criticalRegions: [],
+    supreme:         SUPREME_VUOTO,
   },
 
-  sisma2016: {
-    id:              'sisma2016',
-    label:           'Emergenza — Sisma 2016',
-    badge:           'Emergenza — Sisma Centro Italia 24/08/2016',
+  niscemi: {
+    id:              'niscemi',
+    label:           'Emergenza — Frana Niscemi',
+    badge:           'Emergenza — Frana di Niscemi (CL) — 2025',
     badgeClass:      'badge-crit',
-    data:            generateSisma2016(),
-    provs:           PROV_MARKERS_SISMA_2016,
-    epicenter:       EPICENTER_SISMA_2016,
-    criticalRegions: ['Lazio', 'Umbria', 'Marche', 'Abruzzo'],
+    data:            generateNiscemi(),
+    provs:           PROV_MARKERS_NISCEMI,
+    epicenter:       EPICENTER_NISCEMI,
+    criticalRegions: ['Sicilia'],
+    supreme:         SUPREME_NISCEMI,
   },
 
   anomaliaCalabria: {
@@ -142,5 +195,6 @@ export const SCENARIOS = {
     provs:           [],
     epicenter:       null,
     criticalRegions: ['Calabria', 'Sicilia', 'Puglia'],
+    supreme:         SUPREME_VUOTO,
   },
 };
