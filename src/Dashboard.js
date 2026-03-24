@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [sortCol,        setSortCol]        = useState('sit');
   const [sortDir,        setSortDir]        = useState('asc');
   const [viewBox,        setViewBox]        = useState('0 0 610 793');
+  const [so115Rischio,   setSo115Rischio]   = useState(SOGLIE.so115_rischio);
 
   const regionDropRef = useRef(null);
   const statusDropRef = useRef(null);
@@ -89,18 +90,18 @@ export default function Dashboard() {
   const sorted = [...filtered].sort((a, b) => {
     let vA, vB;
     switch (sortCol) {
-      case 'reg':   vA = a.reg;   vB = b.reg;   break;
-      case 'banda': vA = a.banda; vB = b.banda;  break;
-      case 'sat':   vA = a.sat;   vB = b.sat;    break;
-      case 'so115': vA = a.so115; vB = b.so115;  break;
-      default:      vA = SIT_ORDER[a.sit]; vB = SIT_ORDER[b.sit]; break;
+      case 'reg':     vA = a.reg;     vB = b.reg;     break;
+      case 'banda':   vA = a.banda;   vB = b.banda;   break;
+      case 'sat':     vA = a.sat;     vB = b.sat;     break;
+      case 'pktLoss': vA = a.pktLoss; vB = b.pktLoss; break;
+      case 'so115':   vA = a.so115;   vB = b.so115;   break;
+      default:        vA = SIT_ORDER[a.sit]; vB = SIT_ORDER[b.sit]; break;
     }
     if (typeof vA === 'string') return sortDir === 'asc' ? vA.localeCompare(vB) : vB.localeCompare(vA);
     return sortDir === 'asc' ? vA - vB : vB - vA;
   });
 
   // ── Metriche quadranti ────────────────────────────────────────────────────
-  const n = filtered.length || 1;
 
   // Q1 – Margine Operativo
   const q1ok   = filtered.filter(r => r.sit === 'OPERATIVO').length;
@@ -109,9 +110,9 @@ export default function Dashboard() {
   const q1Label      = q1crit > 0 ? 'Critica' : q1warn > 0 ? 'Sotto stress' : 'Stabile';
   const q1LabelColor = q1crit > 0 ? COL.critStroke : q1warn > 0 ? COL.warnStroke : COL.okStroke;
 
-  // Q2 – Sedi a Rischio
+  // Q2 – Sedi a Rischio (usa soglia SO115 dinamica)
   const q2 = filtered.filter(r =>
-    r.sit === 'EMERGENZA' || (r.sit === 'DEGRADATO' && r.so115 > SOGLIE.so115_rischio)
+    r.sit === 'EMERGENZA' || (r.sit === 'DEGRADATO' && r.so115 > so115Rischio)
   ).length;
 
   // Q3 – Anomalie (degrado/emergenza senza attività SO115 a giustificarlo)
@@ -120,21 +121,42 @@ export default function Dashboard() {
   ).length;
   const q3Color = q3 === 0 ? COL.okStroke : q3 <= 2 ? COL.warnStroke : COL.critStroke;
 
-  // Dati grafici
-  const trendData = sc.trend.map((t,i) => ({ name:`-${30-i}m`, latenza: t.latenza, pktLoss: t.pktLoss }));
-  const satData   = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => ({
-    name: r.reg,
+  // Trend chart: media aggregata dei trend per sede delle sedi filtrate
+  // → cambia automaticamente con la selezione regioni/stato
+  const trendData = useMemo(() => {
+    const sites = filtered.length > 0 ? filtered : enriched;
+    const m = sites.length;
+    return Array.from({ length: 30 }, (_, i) => ({
+      name:     `-${30 - i}m`,
+      latenza:  Math.round(sites.reduce((s, r) => s + r.trend[i].latenza, 0) / m),
+      pktLoss:  +(sites.reduce((s, r) => s + r.trend[i].pktLoss, 0) / m).toFixed(2),
+    }));
+  }, [filtered, enriched]);
+
+  const satData = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => ({
+    name:       r.reg,
     attuale:    r.sat,
     proiezione: Math.min(100, Math.round(r.sat * 1.15 + 2))
   }));
 
-  // Q4 – Tendenza (+30 min)
-  const avgSatNow  = filtered.reduce((s,r) => s + r.sat, 0) / n;
-  const avgSatProj = filtered.reduce((s,r) => s + Math.min(100, r.sat * 1.15 + 2), 0) / n;
-  const trendDelta  = avgSatProj - avgSatNow;
-  const trendLabel  = trendDelta > SOGLIE.trend_delta ? 'Peggioramento' : 'Stabile';
-  const trendIcon   = trendDelta > SOGLIE.trend_delta ? '🔺' : '➖';
-  const trendColor  = trendDelta > SOGLIE.trend_delta ? COL.critStroke : COL.okStroke;
+  // Q4 – Tendenza: transizioni di stato previste a +30 min
+  const q4Transitions = filtered.map(r => {
+    const satProj = Math.min(100, Math.round(r.sat * 1.15 + 2));
+    const sitProj = getSituation(r.tipo, satProj);
+    return sitProj !== r.sit ? { from: r.sit, to: sitProj } : null;
+  }).filter(Boolean);
+
+  // Raggruppa per coppia from→to
+  const q4Groups = {};
+  q4Transitions.forEach(({ from, to }) => {
+    const k = `${from} → ${to}`;
+    q4Groups[k] = (q4Groups[k] || 0) + 1;
+  });
+
+  const q4HasWorsening = q4Transitions.some(t => SIT_ORDER[t.to] < SIT_ORDER[t.from]);
+  const trendIcon  = q4HasWorsening ? '🔺' : q4Transitions.length > 0 ? '🔄' : '➖';
+  const trendLabel = q4HasWorsening ? 'Peggioramento previsto' : q4Transitions.length > 0 ? 'Transizione in corso' : 'Stabile';
+  const trendColor = q4HasWorsening ? COL.critStroke : q4Transitions.length > 0 ? COL.warnStroke : COL.okStroke;
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   function toggleRegion(reg) {
@@ -155,6 +177,7 @@ export default function Dashboard() {
     setScenario(s);
     setSelected(new Set());
     setStatusFilters(new Set(['OPERATIVO','DEGRADATO','EMERGENZA']));
+    setSo115Rischio(SOGLIE.so115_rischio);
   }
 
   // ── Mappa helpers (usano getSituation via stMap) ──────────────────────────
@@ -251,6 +274,20 @@ export default function Dashboard() {
 
         <div className="filter-sep" />
 
+        <div className="msel-wrap">
+          <span className="filter-label">Soglia SO115 rischio:</span>
+          <input
+            type="number" min={0} max={30}
+            className="so115-input"
+            value={so115Rischio}
+            onChange={e => setSo115Rischio(Math.max(0, Math.min(30, Number(e.target.value))))}
+          />
+          {so115Rischio !== SOGLIE.so115_rischio &&
+            <span className="reset" onClick={() => setSo115Rischio(SOGLIE.so115_rischio)}>✕</span>}
+        </div>
+
+        <div className="filter-sep" />
+
         <div className="status-legend">
           <div className="sleg-item"><span className="sleg-dot" style={{background:COL.critStroke}} /><span><strong>Emergenza:</strong> LTE oppure saturazione ≥ 80%</span></div>
           <div className="sleg-item"><span className="sleg-dot" style={{background:COL.warnStroke}} /><span><strong>Degradato:</strong> DSL oppure saturazione 50–80%</span></div>
@@ -282,7 +319,7 @@ export default function Dashboard() {
           <div className="quad-title">Sedi a Rischio Operativo</div>
           <div className="quad-kpi" style={{color: q2>3?COL.critStroke:q2>0?COL.warnStroke:COL.okStroke}}>{q2}</div>
           <div className="quad-kpi-label">sedi a rischio operativo</div>
-          <div className="quad-detail">Emergenza + Degradato con SO115 &gt; {SOGLIE.so115_rischio}</div>
+          <div className="quad-detail">Emergenza + Degradato con SO115 &gt; {so115Rischio}</div>
         </div>
 
         {/* Q3 – Anomalie Operative */}
@@ -298,13 +335,19 @@ export default function Dashboard() {
         {/* Q4 – Tendenza Rete */}
         <div className="quad">
           <div className="quad-title">Tendenza Rete (+30 min)</div>
-          <div className="quad-kpi" style={{color: trendColor, fontSize: 28}}>
-            {trendIcon}
-          </div>
+          <div className="quad-kpi" style={{color: trendColor, fontSize: 28}}>{trendIcon}</div>
           <div className="quad-kpi-label" style={{color: trendColor, fontWeight:700}}>{trendLabel}</div>
-          <div className="quad-detail">
-            Saturazione media: {Math.round(avgSatNow)}% → {Math.round(avgSatProj)}%
-          </div>
+          {q4Transitions.length === 0
+            ? <div className="quad-detail">Nessuna transizione di stato prevista</div>
+            : <div className="q4-transitions">
+                {Object.entries(q4Groups).map(([k, count]) => (
+                  <div key={k} className="q4-transition-row">
+                    <span style={{color: k.includes('EMERGENZA') ? COL.critStroke : COL.warnStroke}}>●</span>
+                    <span>{count} {count === 1 ? 'sede' : 'sedi'}: {k}</span>
+                  </div>
+                ))}
+              </div>
+          }
         </div>
 
       </div>
@@ -367,15 +410,16 @@ export default function Dashboard() {
               <thead>
                 <tr>
                   {[
-                    ['reg',   'Sede'],
-                    ['link',  'Link / Tipo'],
-                    ['banda', 'Banda'],
-                    ['cap',   'Cap.'],
-                    ['sat',   'Saturaz.'],
-                    ['so115', 'SO115'],
-                    ['sit',   'Situazione'],
+                    ['reg',     'Sede'],
+                    ['tipo',    'Tipo'],
+                    ['banda',   'Banda'],
+                    ['cap',     'Cap.'],
+                    ['sat',     'Saturaz.'],
+                    ['pktLoss', 'Pkt Loss'],
+                    ['so115',   'SO115'],
+                    ['sit',     'Situazione'],
                   ].map(([col,label]) => {
-                    const sortable = ['reg','banda','sat','so115','sit'].includes(col);
+                    const sortable = ['reg','banda','sat','pktLoss','so115','sit'].includes(col);
                     return (
                       <th key={col}
                         onClick={sortable ? () => toggleSort(col) : undefined}
@@ -390,15 +434,18 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {sorted.map(r => {
-                  const tipoColor = r.tipo==='Fibra' ? COL.okStroke : r.tipo==='DSL' ? COL.warnStroke : COL.critStroke;
-                  const sitLabel  = r.sit === 'OPERATIVO' ? 'Operativo' : r.sit === 'DEGRADATO' ? 'Degradato' : 'Emergenza';
-                  const sitClass  = r.sit === 'OPERATIVO' ? 'status-ok' : r.sit === 'DEGRADATO' ? 'status-warning' : 'status-critical';
+                  const sitLabel = r.sit === 'OPERATIVO' ? 'Operativo' : r.sit === 'DEGRADATO' ? 'Degradato' : 'Emergenza';
+                  const sitClass = r.sit === 'OPERATIVO' ? 'status-ok' : r.sit === 'DEGRADATO' ? 'status-warning' : 'status-critical';
+                  const pktColor = r.pktLoss > 5 ? COL.critStroke : r.pktLoss >= 1 ? COL.warnStroke : COL.okStroke;
                   return (
                     <tr key={r.reg}>
                       <td style={{fontWeight:500}}>{r.reg}</td>
                       <td>
-                        <span style={{color:sitStroke(r.sit), fontWeight:600}}>{r.link}</span>
-                        <span className="link-tipo" style={{color:tipoColor}}>{r.tipo}</span>
+                        <span style={{
+                          color: sitStroke(r.sit), fontWeight: 700,
+                          background: sitFill(r.sit),
+                          padding: '1px 8px', borderRadius: 4, fontSize: 11
+                        }}>{r.tipo}</span>
                       </td>
                       <td>{r.banda} Mbps</td>
                       <td style={{color:'#aaa'}}>{r.cap} Mbps</td>
@@ -411,6 +458,7 @@ export default function Dashboard() {
                         </div>
                         <span style={{marginLeft:4}}>{r.sat}%</span>
                       </td>
+                      <td style={{color: pktColor, fontWeight:500}}>{r.pktLoss}%</td>
                       <td style={{textAlign:'center',fontWeight:500,color:r.so115>15?COL.critStroke:r.so115>5?COL.warnStroke:'#aaa'}}>{r.so115}</td>
                       <td><span className={`status-pill ${sitClass}`}>{sitLabel}</span></td>
                     </tr>

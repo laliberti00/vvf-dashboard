@@ -1,9 +1,53 @@
 import { ACTIVE_REGIONS, CAP } from './constants';
 
-// ── Helper ────────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function rn(a, b) { return Math.round(a + Math.random() * (b - a)); }
+function rf(a, b) { return +((a + Math.random() * (b - a)).toFixed(2)); }
 
-// ── Marcatori mappa per scenari con evento localizzato ────────────────────────
+// ── Trend per sede ────────────────────────────────────────────────────────────
+// Genera 30 campioni {latenza, pktLoss} realistici in funzione del tipo e della
+// saturazione della sede. Usato per il grafico trend vincolato alla selezione.
+function generateSiteTrend(tipo, sat) {
+  return Array.from({ length: 30 }, (_, i) => {
+    let latenza, pktLoss;
+
+    if (tipo === 'LTE') {
+      // Latenza alta e in leggero peggioramento nel tempo
+      latenza = Math.min(500, Math.round(160 + i * 4 + rn(-15, 25)));
+      pktLoss = rf(5, 13);
+    } else if (tipo === 'DSL') {
+      // Latenza media, packet loss moderato
+      latenza = rn(45, 90);
+      pktLoss = rf(1.0, 4.0);
+    } else if (sat >= 80) {
+      // Fibra satura: latenza crescente (anomalia/congestione)
+      latenza = Math.min(400, Math.round(35 + i * 2.8 + rn(-8, 18)));
+      pktLoss = rf(2.0, 8.0);
+    } else if (sat >= 50) {
+      // Fibra sotto stress
+      latenza = rn(15, 45);
+      pktLoss = rf(0.3, 1.5);
+    } else {
+      // Fibra ok
+      latenza = rn(4, 18);
+      pktLoss = rf(0.0, 0.4);
+    }
+
+    return { latenza, pktLoss };
+  });
+}
+
+// ── Builder sede ──────────────────────────────────────────────────────────────
+// Costruisce un oggetto sede normalizzato. Il campo `sat` viene precalcolato
+// per passarlo a generateSiteTrend; la Dashboard lo ricalcola tramite getSituation
+// per avere sit/sat sempre derivati dalla stessa funzione.
+function buildSite(reg, tipo, banda, pktLoss, so115) {
+  const cap = CAP[tipo];
+  const sat = Math.round(banda / cap * 100);
+  return { reg, tipo, banda, cap, pktLoss, so115, trend: generateSiteTrend(tipo, sat) };
+}
+
+// ── Marcatori mappa ───────────────────────────────────────────────────────────
 const PROV_MARKERS_SISMA_2016 = [
   { name: 'Rieti',     x: 340, y: 370 },
   { name: 'Perugia',   x: 305, y: 330 },
@@ -14,65 +58,57 @@ const PROV_MARKERS_SISMA_2016 = [
 ];
 const EPICENTER_SISMA_2016 = { x: 362, y: 332 };
 
-// ── Generatori dati per sede ──────────────────────────────────────────────────
-// Ogni sede ha: { reg, link, tipo, banda, cap, so115 }
-// sat e sit vengono calcolati dalla dashboard tramite getSituation (non duplicati qui)
-
-function buildSite(reg, tipo, banda, link, so115) {
-  return { reg, link, tipo, banda, cap: CAP[tipo], so115 };
-}
-
-// ── SCENARIO: Normale ─────────────────────────────────────────────────────────
+// ── SCENARIO 1: Normale ───────────────────────────────────────────────────────
 function generateNormal() {
   return ACTIVE_REGIONS.map(reg =>
-    buildSite(reg, 'Fibra', rn(8, 30), 'UP', rn(0, 3))
+    buildSite(reg, 'Fibra', rn(8, 30), rf(0.0, 0.4), rn(0, 3))
   );
 }
 
-// ── SCENARIO: Sisma Centro Italia 24/08/2016 ─────────────────────────────────
+// ── SCENARIO 2: Sisma Centro Italia 24/08/2016 ────────────────────────────────
 function generateSisma2016() {
-  const critiche  = ['Lazio', 'Umbria', 'Marche', 'Abruzzo'];  // DOWN → LTE
-  const degradate = ['Toscana', 'Molise'];                      // DEGRADATO → DSL
+  const critiche  = ['Lazio', 'Umbria', 'Marche', 'Abruzzo']; // → LTE
+  const degradate = ['Toscana', 'Molise'];                     // → DSL
 
   return ACTIVE_REGIONS.map(reg => {
     if (critiche.includes(reg))
-      return buildSite(reg, 'LTE',   rn(3,  4),  'DOWN',      rn(18, 35));
+      return buildSite(reg, 'LTE',   rn(3, 4),  rf(5.0, 14.0), rn(18, 35));
     if (degradate.includes(reg))
-      return buildSite(reg, 'DSL',   rn(5,  7),  'DEGRADATO', rn(6,  14));
-    return   buildSite(reg, 'Fibra', rn(8,  35), 'UP',        rn(0,  4));
+      return buildSite(reg, 'DSL',   rn(5, 7),  rf(1.0,  4.0), rn(6,  14));
+    return   buildSite(reg, 'Fibra', rn(8, 35), rf(0.0,  0.4), rn(0,   4));
   });
 }
 
-// ── Trend (30 campioni = 30 minuti) ──────────────────────────────────────────
-// Formato: array[30] di { latenza_ms, pktLoss_pct }
+// ── SCENARIO 3: Anomalia Operativa — Attacco Informatico (Calabria) ───────────
+// Tre sedi con degrado/emergenza da saturazione Fibra, senza alcun intervento
+// SO115 a giustificarlo → alta presenza in Q3 (anomalie operative).
+// Dimostra che EMERGENZA può derivare da saturazione e non solo da tecnologia LTE.
+function generateAnomaliaCalabria() {
+  const anomale = {
+    // EMERGENZA da saturazione (Fibra ≥ 80%): nessun evento giustificante
+    'Calabria': { tipo: 'Fibra', banda: rn(88, 93), pktLoss: rf(3.0, 8.0), so115: 0 },
+    'Sicilia':  { tipo: 'Fibra', banda: rn(84, 91), pktLoss: rf(2.5, 7.0), so115: 0 },
+    // DEGRADATO/EMERGENZA su DSL senza SO115
+    'Puglia':   { tipo: 'DSL',   banda: rn(7,  8),  pktLoss: rf(1.5, 4.0), so115: 0 },
+  };
 
-function zipTrend(latArr, pktArr) {
-  return latArr.map((lat, i) => ({ latenza: lat, pktLoss: pktArr[i] }));
+  return ACTIVE_REGIONS.map(reg => {
+    const a = anomale[reg];
+    if (a) return buildSite(reg, a.tipo, a.banda, a.pktLoss, a.so115);
+    return buildSite(reg, 'Fibra', rn(8, 30), rf(0.0, 0.4), rn(0, 3));
+  });
 }
 
-const trendNormale = zipTrend(
-  Array.from({ length: 30 }, () => rn(8, 16)),
-  Array.from({ length: 30 }, () => +(Math.random() * 0.4).toFixed(1))
-);
-
-const trendSisma2016 = zipTrend(
-  [14,18,25,35,48,62,78,95,110,130,148,165,175,190,200,210,218,225,235,240,248,255,260,258,265,270,275,280,278,275],
-  [0.3,0.5,0.8,1.2,1.8,2.5,3.2,3.8,4.5,5.0,5.5,6.0,6.2,6.5,6.8,7.0,7.2,7.5,7.3,7.6,7.8,8.0,8.2,8.0,8.3,8.5,8.7,9.0,8.8,8.7]
-);
-
 // ── Registro scenari ──────────────────────────────────────────────────────────
-// Aggiungere nuovi scenari qui, senza toccare Dashboard.js
+// Per aggiungere un nuovo scenario: definire una funzione generate* e aggiungere
+// una voce qui. Dashboard.js non va mai modificato.
 //
 // Struttura di uno scenario:
-//   id:        chiave univoca
-//   label:     testo del pulsante UI
-//   badge:     testo del badge di stato
-//   badgeClass: 'badge-ok' | 'badge-crit'
-//   data:      array di sedi (generato da una funzione generate*)
-//   trend:     array[30] di { latenza, pktLoss }
-//   provs:     array di marcatori mappa ([] se nessuno)
-//   epicenter: { x, y } | null
-//   criticalRegions: array di nomi regione evidenziate per zoom automatico
+//   id, label, badge, badgeClass
+//   data:            array[18] di sedi — ogni sede: { reg, tipo, banda, cap, pktLoss, so115, trend[30] }
+//   provs:           marcatori mappa [ { name, x, y } ] ([] se nessuno)
+//   epicenter:       { x, y } | null
+//   criticalRegions: nomi regioni per zoom automatico su selezione
 //
 export const SCENARIOS = {
   normal: {
@@ -81,7 +117,6 @@ export const SCENARIOS = {
     badge:           'Operativo',
     badgeClass:      'badge-ok',
     data:            generateNormal(),
-    trend:           trendNormale,
     provs:           [],
     epicenter:       null,
     criticalRegions: [],
@@ -93,9 +128,19 @@ export const SCENARIOS = {
     badge:           'Emergenza — Sisma Centro Italia 24/08/2016',
     badgeClass:      'badge-crit',
     data:            generateSisma2016(),
-    trend:           trendSisma2016,
     provs:           PROV_MARKERS_SISMA_2016,
     epicenter:       EPICENTER_SISMA_2016,
     criticalRegions: ['Lazio', 'Umbria', 'Marche', 'Abruzzo'],
+  },
+
+  anomaliaCalabria: {
+    id:              'anomaliaCalabria',
+    label:           'Anomalia — Attacco Informatico',
+    badge:           'Anomalia Operativa — Attacco Informatico (Calabria / Sicilia / Puglia)',
+    badgeClass:      'badge-crit',
+    data:            generateAnomaliaCalabria(),
+    provs:           [],
+    epicenter:       null,
+    criticalRegions: ['Calabria', 'Sicilia', 'Puglia'],
   },
 };
