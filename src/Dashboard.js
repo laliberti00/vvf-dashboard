@@ -4,13 +4,142 @@ import regionsRaw from './italyRegions.json';
 import logoVvf from './logo_vvf.png';
 import './dashboard.css';
 
-import { ACTIVE_REGIONS, EXCLUDED, ID_TO_IT, COL, SOGLIE, SIT_ORDER } from './data/constants';
+import { ACTIVE_REGIONS, EXCLUDED, ID_TO_IT, COL, SOGLIE, SIT_ORDER, MOD_STATO_LABEL, MOD_STATO_COLOR } from './data/constants';
 import { getSituation, sitStroke, sitFill } from './data/getSituation';
 import { SCENARIOS } from './data/scenarios';
 
 const svgRegions = regionsRaw.map(([id, engName, path]) => ({
   id, engName, italianName: ID_TO_IT[id] || engName, path
 }));
+
+// ── Logica di raccomandazione per il Direttore Regionale ─────────────────────
+function getRecommendation(sc, regName) {
+  const supreme = sc.supreme;
+  const provinces = sc.provinces?.[regName] || [];
+  const critiche  = provinces.filter(p => p.stato === 'EMERGENZA').length;
+  const degradate = provinces.filter(p => p.stato === 'DEGRADATO').length;
+
+  if (!supreme || !supreme.codem) {
+    if (critiche > 0)
+      return { level: 'URGENTE',    text: 'Sedi in EMERGENZA senza CODEM attivo su SUPREME. Valutare immediatamente apertura emergenza regionale.' };
+    if (degradate > 0)
+      return { level: 'ATTENZIONE', text: 'Sedi degradate rilevate senza dichiarazione di emergenza. Monitorare evoluzione e valutare allertamento CMR.' };
+    return { level: 'INFO', text: 'Situazione nella norma. Nessuna azione richiesta.' };
+  }
+
+  const msIct = supreme.moduli?.['MS.ICT'];
+  if (msIct?.stato === 'ALLERTATO' && msIct?.impedimenti?.length > 0)
+    return { level: 'ATTENZIONE', text: `MS.ICT allertato con impedimento: ${msIct.impedimenti[0]}. Verificare disponibilità risorsa alternativa presso altro Comando.` };
+  if (msIct?.stato === 'PRONTO' && critiche > 0)
+    return { level: 'URGENTE', text: 'Sedi in emergenza con MS.ICT pronto. Disporre invio immediato per ripristino comunicazioni nel Distretto Operativo.' };
+  if (msIct?.stato === 'IMPEGNATO')
+    return { level: 'INFO', text: 'Moduli CMR in missione. Verificare stato avanzamento sul CODEM e aggiornare rapporto d\'intervento.' };
+
+  return { level: 'INFO', text: 'CODEM attivo. Moduli CMR in stato di prontezza. Situazione monitorata.' };
+}
+
+// ── Pannello dettaglio regionale ──────────────────────────────────────────────
+function RegionPanel({ regName, sc, onClose }) {
+  const supreme   = sc.supreme;
+  const provinces = sc.provinces?.[regName] || [];
+  const rec       = getRecommendation(sc, regName);
+
+  return (
+    <div className="region-panel">
+      <div className="rp-header">
+        <div className="rp-title">
+          <span className="rp-region-name">{regName}</span>
+          <span className="rp-subtitle">Direzione Regionale VVF — Supporto al Soccorso</span>
+        </div>
+        <button className="rp-close" onClick={onClose}>✕</button>
+      </div>
+
+      {/* SUPREME / CODEM */}
+      <div className="rp-section">
+        <div className="rp-section-title">SUPREME / CODEM</div>
+        {supreme?.codem ? (
+          <div className="rp-codem-card">
+            <div className="rp-codem-badge active">ATTIVO</div>
+            <div><strong>CODEM:</strong> {supreme.codem}</div>
+            <div><strong>Evento:</strong> {supreme.evento}</div>
+            <div><strong>Livello:</strong> {supreme.livello}</div>
+          </div>
+        ) : (
+          <div className="rp-codem-card inactive">
+            <div className="rp-codem-badge inactive">NON ATTIVO</div>
+            <div style={{fontSize:11,color:'#aaa',marginTop:4}}>Nessuna emergenza dichiarata su SUPREME</div>
+          </div>
+        )}
+      </div>
+
+      {/* Comandi provinciali */}
+      <div className="rp-section">
+        <div className="rp-section-title">Comandi Provinciali</div>
+        {provinces.length > 0 ? (
+          <table className="rp-prov-table">
+            <thead>
+              <tr>
+                <th>Comando</th><th>Rete</th><th>Sat.</th><th>SO115</th><th>Stato</th>
+              </tr>
+            </thead>
+            <tbody>
+              {provinces.map(p => (
+                <tr key={p.nome}>
+                  <td style={{fontWeight:500}}>{p.nome}</td>
+                  <td style={{color: p.rete==='LTE'?COL.critStroke:p.rete==='DSL'?COL.warnStroke:COL.okStroke, fontWeight:700}}>{p.rete}</td>
+                  <td style={{textAlign:'center'}}>{p.satellitare ? '✓' : '—'}</td>
+                  <td style={{textAlign:'center'}}>{p.so115}</td>
+                  <td>
+                    <span className={`status-pill ${p.stato==='OPERATIVO'?'status-ok':p.stato==='DEGRADATO'?'status-warning':'status-critical'}`}>
+                      {p.stato==='OPERATIVO'?'Operativo':p.stato==='DEGRADATO'?'Degradato':'Emergenza'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <div className="rp-no-data">Dati dettagliati per questa regione non disponibili nello scenario corrente.</div>
+        )}
+      </div>
+
+      {/* Moduli CMR */}
+      {supreme?.moduli && (
+        <div className="rp-section">
+          <div className="rp-section-title">Moduli Colonna Mobile Regionale (CMR)</div>
+          <div className="rp-moduli-grid">
+            {Object.entries(supreme.moduli).map(([nome, mod]) => (
+              <div key={nome} className="rp-modulo-card">
+                <div className="rp-mod-header">
+                  <span className="rp-mod-name">{nome}</span>
+                  <span className="rp-mod-stato" style={{
+                    background: MOD_STATO_COLOR[mod.stato] + '22',
+                    color:      MOD_STATO_COLOR[mod.stato],
+                    border:     `1px solid ${MOD_STATO_COLOR[mod.stato]}55`,
+                  }}>{MOD_STATO_LABEL[mod.stato]}</span>
+                </div>
+                <div className="rp-mod-row"><span className="rp-mod-label">Personale: </span>{mod.personale}</div>
+                <div className="rp-mod-row"><span className="rp-mod-label">Mezzi: </span>{mod.mezzi.join(', ')}</div>
+                {mod.impedimenti.length > 0 && (
+                  <div className="rp-mod-impedimento">⚠ {mod.impedimenti.join('; ')}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Raccomandazione */}
+      <div className="rp-section">
+        <div className="rp-section-title">Raccomandazione — Direttore Regionale</div>
+        <div className={`rp-raccomandazione rp-rac-${rec.level.toLowerCase()}`}>
+          <div className="rp-rac-level">{rec.level}</div>
+          <div className="rp-rac-text">{rec.text}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Componente principale ─────────────────────────────────────────────────────
 export default function Dashboard() {
@@ -24,6 +153,7 @@ export default function Dashboard() {
   const [sortDir,        setSortDir]        = useState('asc');
   const [viewBox,        setViewBox]        = useState('0 0 610 793');
   const [so115Rischio,   setSo115Rischio]   = useState(SOGLIE.so115_rischio);
+  const [panelReg,       setPanelReg]       = useState(null);
 
   const regionDropRef = useRef(null);
   const statusDropRef = useRef(null);
@@ -162,8 +292,9 @@ export default function Dashboard() {
   function toggleRegion(reg) {
     if (!ACTIVE_REGIONS.includes(reg)) return;
     setSelected(prev => { const n = new Set(prev); n.has(reg) ? n.delete(reg) : n.add(reg); return n; });
+    setPanelReg(reg);
   }
-  function clearSelection() { setSelected(new Set()); }
+  function clearSelection() { setSelected(new Set()); setPanelReg(null); }
 
   function toggleStatusFilter(st) {
     setStatusFilters(prev => {
@@ -178,6 +309,7 @@ export default function Dashboard() {
     setSelected(new Set());
     setStatusFilters(new Set(['OPERATIVO','DEGRADATO','EMERGENZA']));
     setSo115Rischio(SOGLIE.so115_rischio);
+    setPanelReg(null);
   }
 
   // ── Mappa helpers (usano getSituation via stMap) ──────────────────────────
@@ -509,6 +641,13 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {panelReg && (
+        <RegionPanel
+          regName={panelReg}
+          sc={sc}
+          onClose={() => setPanelReg(null)}
+        />
+      )}
     </div>
   );
 }

@@ -87,3 +87,64 @@ tr:hover { background: #fafafa; }
 .chart-legend span { display: flex; align-items: center; gap: 4px; }
 .chart-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 
+/* ── Pannello Regionale ───────────────────────────────────────────────────── */
+.region-panel {
+  position: fixed; top: 0; right: 0; width: 400px; height: 100vh;
+  background: #fff; border-left: 3px solid #C1272D;
+  box-shadow: -4px 0 24px rgba(0,0,0,0.18); z-index: 200;
+  overflow-y: auto; animation: rpSlideIn 0.22s ease;
+  font-size: 12px;
+}
+@keyframes rpSlideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.rp-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 14px 16px 12px;
+  background: linear-gradient(135deg, #C1272D 0%, #8b1a1a 100%); color: #fff;
+}
+.rp-title { display: flex; flex-direction: column; gap: 2px; }
+.rp-region-name { font-size: 20px; font-weight: 800; letter-spacing: 0.5px; font-family: 'Oswald', sans-serif; }
+.rp-subtitle { font-size: 10px; opacity: 0.75; text-transform: uppercase; letter-spacing: 1px; }
+.rp-close {
+  background: rgba(255,255,255,0.15); border: none; color: #fff;
+  font-size: 15px; cursor: pointer; padding: 4px 9px; border-radius: 4px; line-height: 1; flex-shrink: 0;
+}
+.rp-close:hover { background: rgba(255,255,255,0.3); }
+
+.rp-section { padding: 12px 16px; border-bottom: 1px solid #f0f0f0; }
+.rp-section-title { font-size: 10px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 8px; }
+
+.rp-codem-card { background: #fafafa; border-radius: 6px; padding: 10px 12px; font-size: 12px; line-height: 1.9; border-left: 3px solid #4caf50; }
+.rp-codem-card.inactive { border-left-color: #ddd; }
+.rp-codem-badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; font-weight: 700; margin-bottom: 4px; }
+.rp-codem-badge.active   { background: #e8f5e9; color: #2e7d32; }
+.rp-codem-badge.inactive { background: #f5f5f5; color: #aaa; }
+
+.rp-prov-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.rp-prov-table th { text-align: left; padding: 4px 6px; color: #888; font-weight: 600; border-bottom: 1px solid #eee; font-size: 10px; text-transform: uppercase; }
+.rp-prov-table td { padding: 5px 6px; border-bottom: 1px solid #f7f7f7; }
+.rp-prov-table tr:hover td { background: #fafafa; }
+
+.rp-moduli-grid { display: flex; flex-direction: column; gap: 8px; }
+.rp-modulo-card { background: #fafafa; border-radius: 6px; padding: 10px 12px; border: 1px solid #eee; }
+.rp-mod-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.rp-mod-name { font-size: 13px; font-weight: 800; color: #333; font-family: 'Oswald', sans-serif; }
+.rp-mod-stato { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 3px; text-transform: uppercase; }
+.rp-mod-row { font-size: 11px; color: #555; line-height: 1.7; }
+.rp-mod-label { font-weight: 600; color: #333; }
+.rp-mod-impedimento { margin-top: 6px; padding: 5px 8px; background: #fff8e1; border-radius: 4px; font-size: 11px; color: #e65100; border-left: 3px solid #ff9800; }
+
+.rp-raccomandazione { border-radius: 6px; padding: 10px 14px; }
+.rp-rac-urgente    { background: #fce4ec; border-left: 4px solid #ef5350; }
+.rp-rac-attenzione { background: #fff8e1; border-left: 4px solid #ff9800; }
+.rp-rac-info       { background: #e8f5e9; border-left: 4px solid #4caf50; }
+.rp-rac-level { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.rp-rac-urgente    .rp-rac-level { color: #c62828; }
+.rp-rac-attenzione .rp-rac-level { color: #e65100; }
+.rp-rac-info       .rp-rac-level { color: #2e7d32; }
+.rp-rac-text { font-size: 12px; line-height: 1.5; color: #333; }
+.rp-no-data { font-size: 11px; color: #aaa; padding: 8px 0; font-style: italic; }
+

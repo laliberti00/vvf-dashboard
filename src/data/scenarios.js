@@ -5,30 +5,23 @@ function rn(a, b) { return Math.round(a + Math.random() * (b - a)); }
 function rf(a, b) { return +((a + Math.random() * (b - a)).toFixed(2)); }
 
 // ── Trend per sede ────────────────────────────────────────────────────────────
-// Genera 30 campioni {latenza, pktLoss} realistici in funzione del tipo e della
-// saturazione della sede. Usato per il grafico trend vincolato alla selezione.
 function generateSiteTrend(tipo, sat) {
   return Array.from({ length: 30 }, (_, i) => {
     let latenza, pktLoss;
 
     if (tipo === 'LTE') {
-      // Latenza alta e in leggero peggioramento nel tempo
       latenza = Math.min(500, Math.round(160 + i * 4 + rn(-15, 25)));
       pktLoss = rf(5, 13);
     } else if (tipo === 'DSL') {
-      // Latenza media, packet loss moderato
       latenza = rn(45, 90);
       pktLoss = rf(1.0, 4.0);
     } else if (sat >= 80) {
-      // Fibra satura: latenza crescente (anomalia/congestione)
       latenza = Math.min(400, Math.round(35 + i * 2.8 + rn(-8, 18)));
       pktLoss = rf(2.0, 8.0);
     } else if (sat >= 50) {
-      // Fibra sotto stress
       latenza = rn(15, 45);
       pktLoss = rf(0.3, 1.5);
     } else {
-      // Fibra ok
       latenza = rn(4, 18);
       pktLoss = rf(0.0, 0.4);
     }
@@ -38,9 +31,6 @@ function generateSiteTrend(tipo, sat) {
 }
 
 // ── Builder sede ──────────────────────────────────────────────────────────────
-// Costruisce un oggetto sede normalizzato. Il campo `sat` viene precalcolato
-// per passarlo a generateSiteTrend; la Dashboard lo ricalcola tramite getSituation
-// per avere sit/sat sempre derivati dalla stessa funzione.
 function buildSite(reg, tipo, banda, pktLoss, so115) {
   const cap = CAP[tipo];
   const sat = Math.round(banda / cap * 100);
@@ -48,15 +38,64 @@ function buildSite(reg, tipo, banda, pktLoss, so115) {
 }
 
 // ── Marcatori mappa ───────────────────────────────────────────────────────────
-const PROV_MARKERS_SISMA_2016 = [
-  { name: 'Rieti',     x: 340, y: 370 },
-  { name: 'Perugia',   x: 305, y: 330 },
-  { name: 'Ascoli P.', x: 380, y: 325 },
-  { name: 'Teramo',    x: 375, y: 310 },
-  { name: "L'Aquila",  x: 350, y: 340 },
-  { name: 'Macerata',  x: 365, y: 300 },
+const PROV_MARKERS_NISCEMI = [
+  { name: 'Caltanissetta', x: 335, y: 630 },
+  { name: 'Agrigento',     x: 300, y: 645 },
+  { name: 'Ragusa',        x: 375, y: 655 },
 ];
-const EPICENTER_SISMA_2016 = { x: 362, y: 332 };
+const EPICENTER_NISCEMI = { x: 352, y: 645 };
+
+// ── Dati provinciali per scenario ─────────────────────────────────────────────
+// Ogni entry: { nome, rete, satellitare, so115, stato }
+const PROVINCES_NISCEMI = {
+  'Sicilia': [
+    { nome: 'Caltanissetta', rete: 'LTE',   satellitare: false, so115: 18, stato: 'EMERGENZA' },
+    { nome: 'Agrigento',     rete: 'DSL',   satellitare: false, so115: 8,  stato: 'DEGRADATO' },
+    { nome: 'Ragusa',        rete: 'DSL',   satellitare: false, so115: 6,  stato: 'DEGRADATO' },
+    { nome: 'Enna',          rete: 'Fibra', satellitare: false, so115: 3,  stato: 'OPERATIVO' },
+    { nome: 'Palermo',       rete: 'Fibra', satellitare: false, so115: 2,  stato: 'OPERATIVO' },
+    { nome: 'Catania',       rete: 'Fibra', satellitare: false, so115: 2,  stato: 'OPERATIVO' },
+    { nome: 'Siracusa',      rete: 'Fibra', satellitare: false, so115: 1,  stato: 'OPERATIVO' },
+    { nome: 'Messina',       rete: 'Fibra', satellitare: false, so115: 1,  stato: 'OPERATIVO' },
+    { nome: 'Trapani',       rete: 'Fibra', satellitare: false, so115: 0,  stato: 'OPERATIVO' },
+  ],
+  'Calabria': [
+    { nome: 'Catanzaro',     rete: 'DSL',   satellitare: false, so115: 7, stato: 'DEGRADATO' },
+    { nome: 'Crotone',       rete: 'DSL',   satellitare: false, so115: 5, stato: 'DEGRADATO' },
+    { nome: 'Cosenza',       rete: 'Fibra', satellitare: false, so115: 2, stato: 'OPERATIVO' },
+    { nome: 'Reggio C.',     rete: 'Fibra', satellitare: false, so115: 1, stato: 'OPERATIVO' },
+    { nome: 'Vibo Valentia', rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+  ],
+};
+
+const PROVINCES_ANOMALIA = {
+  'Calabria': [
+    { nome: 'Catanzaro',     rete: 'Fibra', satellitare: false, so115: 0, stato: 'EMERGENZA' },
+    { nome: 'Cosenza',       rete: 'Fibra', satellitare: false, so115: 0, stato: 'EMERGENZA' },
+    { nome: 'Reggio C.',     rete: 'Fibra', satellitare: false, so115: 0, stato: 'EMERGENZA' },
+    { nome: 'Crotone',       rete: 'Fibra', satellitare: false, so115: 0, stato: 'DEGRADATO' },
+    { nome: 'Vibo Valentia', rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+  ],
+  'Sicilia': [
+    { nome: 'Palermo',       rete: 'Fibra', satellitare: false, so115: 0, stato: 'EMERGENZA' },
+    { nome: 'Catania',       rete: 'Fibra', satellitare: false, so115: 0, stato: 'EMERGENZA' },
+    { nome: 'Messina',       rete: 'Fibra', satellitare: false, so115: 0, stato: 'DEGRADATO' },
+    { nome: 'Agrigento',     rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Caltanissetta', rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Enna',          rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Trapani',       rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Ragusa',        rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Siracusa',      rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+  ],
+  'Puglia': [
+    { nome: 'Bari',          rete: 'DSL',   satellitare: false, so115: 0, stato: 'EMERGENZA' },
+    { nome: 'Lecce',         rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Taranto',       rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Foggia',        rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'Brindisi',      rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+    { nome: 'BAT',           rete: 'Fibra', satellitare: false, so115: 0, stato: 'OPERATIVO' },
+  ],
+};
 
 // ── SCENARIO 1: Normale ───────────────────────────────────────────────────────
 function generateNormal() {
@@ -65,30 +104,25 @@ function generateNormal() {
   );
 }
 
-// ── SCENARIO 2: Sisma Centro Italia 24/08/2016 ────────────────────────────────
-function generateSisma2016() {
-  const critiche  = ['Lazio', 'Umbria', 'Marche', 'Abruzzo']; // → LTE
-  const degradate = ['Toscana', 'Molise'];                     // → DSL
+// ── SCENARIO 2: Frana di Niscemi (CL) — 14/03/2025 ───────────────────────────
+function generateNiscemi() {
+  const critiche  = ['Sicilia'];
+  const degradate = ['Calabria'];
 
   return ACTIVE_REGIONS.map(reg => {
     if (critiche.includes(reg))
-      return buildSite(reg, 'LTE',   rn(3, 4),  rf(5.0, 14.0), rn(18, 35));
+      return buildSite(reg, 'LTE',   rn(3, 4),  rf(5.0, 12.0), rn(15, 28));
     if (degradate.includes(reg))
-      return buildSite(reg, 'DSL',   rn(5, 7),  rf(1.0,  4.0), rn(6,  14));
+      return buildSite(reg, 'DSL',   rn(5, 7),  rf(1.0,  3.5), rn(5,  12));
     return   buildSite(reg, 'Fibra', rn(8, 35), rf(0.0,  0.4), rn(0,   4));
   });
 }
 
 // ── SCENARIO 3: Anomalia Operativa — Attacco Informatico (Calabria) ───────────
-// Tre sedi con degrado/emergenza da saturazione Fibra, senza alcun intervento
-// SO115 a giustificarlo → alta presenza in Q3 (anomalie operative).
-// Dimostra che EMERGENZA può derivare da saturazione e non solo da tecnologia LTE.
 function generateAnomaliaCalabria() {
   const anomale = {
-    // EMERGENZA da saturazione (Fibra ≥ 80%): nessun evento giustificante
     'Calabria': { tipo: 'Fibra', banda: rn(88, 93), pktLoss: rf(3.0, 8.0), so115: 0 },
     'Sicilia':  { tipo: 'Fibra', banda: rn(84, 91), pktLoss: rf(2.5, 7.0), so115: 0 },
-    // DEGRADATO/EMERGENZA su DSL senza SO115
     'Puglia':   { tipo: 'DSL',   banda: rn(7,  8),  pktLoss: rf(1.5, 4.0), so115: 0 },
   };
 
@@ -100,16 +134,6 @@ function generateAnomaliaCalabria() {
 }
 
 // ── Registro scenari ──────────────────────────────────────────────────────────
-// Per aggiungere un nuovo scenario: definire una funzione generate* e aggiungere
-// una voce qui. Dashboard.js non va mai modificato.
-//
-// Struttura di uno scenario:
-//   id, label, badge, badgeClass
-//   data:            array[18] di sedi — ogni sede: { reg, tipo, banda, cap, pktLoss, so115, trend[30] }
-//   provs:           marcatori mappa [ { name, x, y } ] ([] se nessuno)
-//   epicenter:       { x, y } | null
-//   criticalRegions: nomi regioni per zoom automatico su selezione
-//
 export const SCENARIOS = {
   normal: {
     id:              'normal',
@@ -120,17 +144,45 @@ export const SCENARIOS = {
     provs:           [],
     epicenter:       null,
     criticalRegions: [],
+    provinces:       {},
+    supreme:         null,
   },
 
-  sisma2016: {
-    id:              'sisma2016',
-    label:           'Emergenza — Sisma 2016',
-    badge:           'Emergenza — Sisma Centro Italia 24/08/2016',
+  niscemi: {
+    id:              'niscemi',
+    label:           'Emergenza — Frana Niscemi',
+    badge:           'Emergenza — Frana Niscemi (CL) 14/03/2025',
     badgeClass:      'badge-crit',
-    data:            generateSisma2016(),
-    provs:           PROV_MARKERS_SISMA_2016,
-    epicenter:       EPICENTER_SISMA_2016,
-    criticalRegions: ['Lazio', 'Umbria', 'Marche', 'Abruzzo'],
+    data:            generateNiscemi(),
+    provs:           PROV_MARKERS_NISCEMI,
+    epicenter:       EPICENTER_NISCEMI,
+    criticalRegions: ['Sicilia', 'Calabria'],
+    provinces:       PROVINCES_NISCEMI,
+    supreme: {
+      codem:   'EM-2025-031',
+      evento:  'Frana Niscemi — Caltanissetta (CL)',
+      livello: 'REGIONALE',
+      moduli: {
+        'MS.ICT': {
+          stato:        'ALLERTATO',
+          personale:    '3 TLC + 3 Inf.',
+          mezzi:        ['PRT (ponti radio)', 'CRT/SRC (satellite)', 'Auto connettività'],
+          impedimenti:  ['Veicolo PRT in manutenzione presso officina CL'],
+        },
+        'MS.COEM': {
+          stato:        'PRONTO',
+          personale:    '2 addetti COEM',
+          mezzi:        ['Mezzo attrezzato comunicazioni'],
+          impedimenti:  [],
+        },
+        'MS.TAST': {
+          stato:        'PRONTO',
+          personale:    '1 ICT',
+          mezzi:        ['Autovettura'],
+          impedimenti:  [],
+        },
+      },
+    },
   },
 
   anomaliaCalabria: {
@@ -142,5 +194,12 @@ export const SCENARIOS = {
     provs:           [],
     epicenter:       null,
     criticalRegions: ['Calabria', 'Sicilia', 'Puglia'],
+    provinces:       PROVINCES_ANOMALIA,
+    supreme: {
+      codem:   null,
+      evento:  null,
+      livello: null,
+      moduli:  null,
+    },
   },
 };

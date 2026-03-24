@@ -65,3 +65,17 @@ export const COL = {
 
 // ── Ordinamento situazione ────────────────────────────────────────────────────
 export const SIT_ORDER = { EMERGENZA: 0, DEGRADATO: 1, OPERATIVO: 2 };
+
+// ── Moduli CMR — stati e colori ───────────────────────────────────────────────
+export const MOD_STATO_LABEL = {
+  PRONTO:          'Pronto',
+  ALLERTATO:       'Allertato',
+  IMPEGNATO:       'In Missione',
+  NON_DISPONIBILE: 'Non Disponibile',
+};
+export const MOD_STATO_COLOR = {
+  PRONTO:          '#4caf50',
+  ALLERTATO:       '#ff9800',
+  IMPEGNATO:       '#1976d2',
+  NON_DISPONIBILE: '#ef5350',
+};
