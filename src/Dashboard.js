@@ -287,11 +287,11 @@ export default function Dashboard() {
     r.sit === 'EMERGENZA' || (r.sit === 'DEGRADATO' && r.so115 > so115Rischio)
   ).length;
 
-  // Q3: anomalie operative = degrado/emergenza rete con SO115 basso
+  // Q3: anomalie operative = degrado/emergenza rete con SO115 < soglia rischio
   // E nessuna emergenza SUPREME attiva che giustifichi il degrado
   const q3 = metricsData.filter(r => {
     const hasNetworkIssue = r.sit === 'EMERGENZA' || r.sit === 'DEGRADATO';
-    const lowSO115        = r.so115 <= SOGLIE.so115_anomalia;
+    const lowSO115        = r.so115 < so115Rischio;
     const coveredByEM01   = sc.supreme?.codem && (sc.supremeRegions || []).includes(r.reg);
     return hasNetworkIssue && lowSO115 && !coveredByEM01;
   }).length;
@@ -381,8 +381,11 @@ export default function Dashboard() {
   const showProvMarkers = sc.provs.length > 0 &&
     (!hasSel || sc.criticalRegions.some(r => selected.has(r)));
 
-  // Triangolo EM01: SOLO per regioni con CODEM SUPREME attivo (sc.supremeRegions)
-  const em01Regions = sc.supreme?.codem ? (sc.supremeRegions || []) : [];
+  // Triangolo EM01: SOLO per regioni con CODEM SUPREME attivo (supremeRegions)
+  // NON dipende da criticalRegions (degrado rete) — solo da attivazione SUPREME
+  const em01Regions = (sc.supreme?.codem && sc.supremeRegions?.length > 0)
+    ? sc.supremeRegions
+    : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -391,7 +394,7 @@ export default function Dashboard() {
       {/* ── Header ── */}
       <div className="header">
         <div className="header-band">
-          <div className="header-title">STATO CONNESSIONI CNVVF</div>
+          <div className="header-title">NETWORK OPERATIONS DASHBAORD CNVVF</div>
         </div>
         <div className="header-controls">
           <span className={`badge ${sc.badgeClass}`}>{sc.badge}</span>
@@ -500,12 +503,10 @@ export default function Dashboard() {
         </div>
 
         <div className="quad">
-          <div className="quad-title">Anomalie Operative ⚠</div>
-          <div className="quad-kpi" style={{color: q3Color}}>
-            {q3 > 0 ? q3 : '✓'}
-          </div>
-          <div className="quad-kpi-label">{q3 > 0 ? 'sedi con anomalie' : 'Nessuna anomalia'}</div>
-          <div className="quad-detail">Degrado/emergenza senza attività SO115</div>
+          <div className="quad-title">Anomalie Operative</div>
+          <div className="quad-kpi" style={{color: q3Color}}>{q3}</div>
+          <div className="quad-kpi-label">{q3 > 0 ? 'sedi anomale rilevate' : 'Nessuna anomalia'}</div>
+          <div className="quad-detail">Degrado/emergenza con SO115 &lt; {so115Rischio}</div>
         </div>
 
         <div className="quad">
@@ -577,7 +578,7 @@ export default function Dashboard() {
                   stroke="white" strokeWidth={3} paintOrder="stroke">{p.name}</text>
               </g>
             ))}
-            {showProvMarkers && sc.epicenter && (
+            {sc.epicenter && (
               <g>
                 <line x1={sc.epicenter.x-7} y1={sc.epicenter.y-7} x2={sc.epicenter.x+7} y2={sc.epicenter.y+7} stroke={COL.critStroke} strokeWidth={3} />
                 <line x1={sc.epicenter.x+7} y1={sc.epicenter.y-7} x2={sc.epicenter.x-7} y2={sc.epicenter.y+7} stroke={COL.critStroke} strokeWidth={3} />
@@ -643,18 +644,27 @@ export default function Dashboard() {
                   const isExpanded = expandedReg === r.reg;
                   const provinces  = sc.provinces?.[r.reg] || [];
                   const hasProv    = provinces.length > 0;
+                  const hasSupreme = !!(sc.supreme?.codem && (sc.supremeRegions || []).includes(r.reg));
                   return (
                     <React.Fragment key={r.reg}>
                       {/* ── Riga D.R. (Direzione Regionale) ── */}
                       <tr
                         onClick={() => setExpandedReg(isExpanded ? null : r.reg)}
-                        style={{cursor:'pointer', background: isExpanded ? '#fff8f8' : undefined}}
+                        style={{
+                          cursor: 'pointer',
+                          background: hasSupreme ? '#fff0f0' : isExpanded ? '#fff8f8' : undefined,
+                          borderLeft: hasSupreme ? `3px solid ${COL.vvf}` : undefined,
+                        }}
                       >
-                        <td style={{fontWeight:600}}>
+                        <td style={{fontWeight: hasSupreme ? 700 : 600, color: hasSupreme ? COL.vvf : undefined}}>
                           <span className="expand-arrow">{isExpanded ? '▼' : '▶'}</span>
-                          <span style={{fontSize:10, color:'#999', fontWeight:400, marginRight:3}}>D.R.</span>
+                          <span style={{fontSize:10, color: hasSupreme ? '#e57373' : '#999', fontWeight:400, marginRight:3}}>D.R.</span>
                           {r.reg}
-                          {r.sit === 'EMERGENZA' && <span className="row-alert-badge">⚠</span>}
+                          {hasSupreme &&
+                            <span style={{marginLeft:7, fontSize:10, fontWeight:700, color:'#fff',
+                              background: COL.vvf, padding:'1px 7px', borderRadius:3, letterSpacing:'0.3px'}}>
+                              SUPREME
+                            </span>}
                         </td>
                         <td>
                           <span style={{

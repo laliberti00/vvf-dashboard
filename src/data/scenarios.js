@@ -94,7 +94,32 @@ const PROV_CAL_ANOMALIA = [
   { nome: 'Vibo Valentia',   tipo: 'Fibra', banda: 18, pktLoss: 0.3, so115: 0 },
 ];
 
+// ── Sicilia — Scenario Normale ────────────────────────────────────────────────
+// Tutti Fibra, saturazione bassa, nessuna criticità
+const PROV_SIC_NORMAL = [
+  { nome: 'Palermo',       tipo: 'Fibra', banda: 28, pktLoss: 0.3, so115: 0 },
+  { nome: 'Catania',       tipo: 'Fibra', banda: 22, pktLoss: 0.2, so115: 1 },
+  { nome: 'Messina',       tipo: 'Fibra', banda: 15, pktLoss: 0.1, so115: 0 },
+  { nome: 'Agrigento',     tipo: 'Fibra', banda: 12, pktLoss: 0.2, so115: 0 },
+  { nome: 'Siracusa',      tipo: 'Fibra', banda:  9, pktLoss: 0.1, so115: 0 },
+  { nome: 'Ragusa',        tipo: 'Fibra', banda:  8, pktLoss: 0.1, so115: 0 },
+  { nome: 'Trapani',       tipo: 'Fibra', banda:  7, pktLoss: 0.0, so115: 0 },
+  { nome: 'Caltanissetta', tipo: 'Fibra', banda:  6, pktLoss: 0.1, so115: 0 },
+  { nome: 'Enna',          tipo: 'Fibra', banda:  5, pktLoss: 0.0, so115: 0 },
+];
+
+// ── Calabria — Scenario Normale ───────────────────────────────────────────────
+// Tutti Fibra, saturazione bassa, nessuna criticità
+const PROV_CAL_NORMAL = [
+  { nome: 'Reggio Calabria', tipo: 'Fibra', banda: 21, pktLoss: 0.1, so115: 1 },
+  { nome: 'Cosenza',         tipo: 'Fibra', banda: 18, pktLoss: 0.2, so115: 0 },
+  { nome: 'Catanzaro',       tipo: 'Fibra', banda: 14, pktLoss: 0.1, so115: 0 },
+  { nome: 'Crotone',         tipo: 'Fibra', banda: 10, pktLoss: 0.1, so115: 0 },
+  { nome: 'Vibo Valentia',   tipo: 'Fibra', banda:  8, pktLoss: 0.0, so115: 0 },
+];
+
 // ── Aggregazioni per scenari ──────────────────────────────────────────────────
+const PROVINCES_NORMAL   = { 'Sicilia': PROV_SIC_NORMAL, 'Calabria': PROV_CAL_NORMAL };
 const PROVINCES_NISCEMI  = { 'Sicilia': PROV_SIC_NISCEMI, 'Calabria': PROV_CAL_NISCEMI };
 const PROVINCES_ANOMALIA = { 'Calabria': PROV_CAL_ANOMALIA };
 
@@ -167,7 +192,7 @@ export const SCENARIOS = {
     epicenter:       null,
     criticalRegions: [],
     supremeRegions:  [],
-    provinces:       {},
+    provinces:       PROVINCES_NORMAL,
     supreme:         null,
   },
 
