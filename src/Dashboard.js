@@ -4,13 +4,15 @@ import regionsRaw from './italyRegions.json';
 import logoVvf from './logo_vvf.png';
 import './dashboard.css';
 
-import { ACTIVE_REGIONS, EXCLUDED, ID_TO_IT, COL, SOGLIE, SIT_ORDER, MOD_STATO_LABEL, MOD_STATO_COLOR } from './data/constants';
+import { ACTIVE_REGIONS, EXCLUDED, ID_TO_IT, COL, SOGLIE, SIT_ORDER, MOD_STATO_LABEL, MOD_STATO_COLOR, CAP } from './data/constants';
 import { getSituation, sitStroke, sitFill } from './data/getSituation';
 import { SCENARIOS } from './data/scenarios';
 
 const svgRegions = regionsRaw.map(([id, engName, path]) => ({
   id, engName, italianName: ID_TO_IT[id] || engName, path
 }));
+
+const SORTED_REGIONS = [...ACTIVE_REGIONS].sort((a, b) => a.localeCompare(b, 'it'));
 
 // ── Logica di raccomandazione per il Direttore Regionale ─────────────────────
 function getRecommendation(sc, regName) {
@@ -33,109 +35,74 @@ function getRecommendation(sc, regName) {
   if (msIct?.stato === 'PRONTO' && critiche > 0)
     return { level: 'URGENTE', text: 'Sedi in emergenza con MS.ICT pronto. Disporre invio immediato per ripristino comunicazioni nel Distretto Operativo.' };
   if (msIct?.stato === 'IMPEGNATO')
-    return { level: 'INFO', text: 'Moduli CMR in missione. Verificare stato avanzamento sul CODEM e aggiornare rapporto d\'intervento.' };
+    return { level: 'INFO', text: "Moduli CMR in missione. Verificare stato avanzamento sul CODEM e aggiornare rapporto d'intervento." };
 
   return { level: 'INFO', text: 'CODEM attivo. Moduli CMR in stato di prontezza. Situazione monitorata.' };
 }
 
-// ── Pannello dettaglio regionale ──────────────────────────────────────────────
-function RegionPanel({ regName, sc, onClose }) {
-  const supreme   = sc.supreme;
-  const provinces = sc.provinces?.[regName] || [];
-  const rec       = getRecommendation(sc, regName);
+// ── Riquadro emergenza (CODEM + CMR + raccomandazione) ────────────────────────
+function EmergencyInfoBox({ regName, sc, onClose }) {
+  const supreme = sc.supreme;
+  const rec     = getRecommendation(sc, regName);
 
   return (
-    <div className="region-panel">
-      <div className="rp-header">
-        <div className="rp-title">
-          <span className="rp-region-name">{regName}</span>
-          <span className="rp-subtitle">Direzione Regionale VVF — Supporto al Soccorso</span>
+    <div className="emg-box">
+      <div className="emg-box-header">
+        <span className="emg-box-title">Supporto al Soccorso — <strong>{regName}</strong></span>
+        <button className="emg-box-close" onClick={onClose}>✕</button>
+      </div>
+
+      <div className="emg-box-body">
+        {/* SUPREME / CODEM */}
+        <div className="emg-col">
+          <div className="emg-section-title">SUPREME / CODEM</div>
+          {supreme?.codem ? (
+            <div className="rp-codem-card">
+              <div className="rp-codem-badge active">ATTIVO</div>
+              <div><strong>CODEM:</strong> {supreme.codem}</div>
+              <div><strong>Evento:</strong> {supreme.evento}</div>
+              <div><strong>Livello:</strong> {supreme.livello}</div>
+            </div>
+          ) : (
+            <div className="rp-codem-card inactive">
+              <div className="rp-codem-badge inactive">NON ATTIVO</div>
+              <div style={{fontSize:11,color:'#aaa',marginTop:4}}>Nessuna emergenza dichiarata su SUPREME</div>
+            </div>
+          )}
+
+          {/* Raccomandazione */}
+          <div className="emg-section-title" style={{marginTop:12}}>Raccomandazione — Dir. Regionale</div>
+          <div className={`rp-raccomandazione rp-rac-${rec.level.toLowerCase()}`}>
+            <div className="rp-rac-level">{rec.level}</div>
+            <div className="rp-rac-text">{rec.text}</div>
+          </div>
         </div>
-        <button className="rp-close" onClick={onClose}>✕</button>
-      </div>
 
-      {/* SUPREME / CODEM */}
-      <div className="rp-section">
-        <div className="rp-section-title">SUPREME / CODEM</div>
-        {supreme?.codem ? (
-          <div className="rp-codem-card">
-            <div className="rp-codem-badge active">ATTIVO</div>
-            <div><strong>CODEM:</strong> {supreme.codem}</div>
-            <div><strong>Evento:</strong> {supreme.evento}</div>
-            <div><strong>Livello:</strong> {supreme.livello}</div>
-          </div>
-        ) : (
-          <div className="rp-codem-card inactive">
-            <div className="rp-codem-badge inactive">NON ATTIVO</div>
-            <div style={{fontSize:11,color:'#aaa',marginTop:4}}>Nessuna emergenza dichiarata su SUPREME</div>
-          </div>
-        )}
-      </div>
-
-      {/* Comandi provinciali */}
-      <div className="rp-section">
-        <div className="rp-section-title">Comandi Provinciali</div>
-        {provinces.length > 0 ? (
-          <table className="rp-prov-table">
-            <thead>
-              <tr>
-                <th>Comando</th><th>Rete</th><th>Sat.</th><th>SO115</th><th>Stato</th>
-              </tr>
-            </thead>
-            <tbody>
-              {provinces.map(p => (
-                <tr key={p.nome}>
-                  <td style={{fontWeight:500}}>{p.nome}</td>
-                  <td style={{color: p.rete==='LTE'?COL.critStroke:p.rete==='DSL'?COL.warnStroke:COL.okStroke, fontWeight:700}}>{p.rete}</td>
-                  <td style={{textAlign:'center'}}>{p.satellitare ? '✓' : '—'}</td>
-                  <td style={{textAlign:'center'}}>{p.so115}</td>
-                  <td>
-                    <span className={`status-pill ${p.stato==='OPERATIVO'?'status-ok':p.stato==='DEGRADATO'?'status-warning':'status-critical'}`}>
-                      {p.stato==='OPERATIVO'?'Operativo':p.stato==='DEGRADATO'?'Degradato':'Emergenza'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <div className="rp-no-data">Dati dettagliati per questa regione non disponibili nello scenario corrente.</div>
-        )}
-      </div>
-
-      {/* Moduli CMR */}
-      {supreme?.moduli && (
-        <div className="rp-section">
-          <div className="rp-section-title">Moduli Colonna Mobile Regionale (CMR)</div>
-          <div className="rp-moduli-grid">
-            {Object.entries(supreme.moduli).map(([nome, mod]) => (
-              <div key={nome} className="rp-modulo-card">
-                <div className="rp-mod-header">
-                  <span className="rp-mod-name">{nome}</span>
-                  <span className="rp-mod-stato" style={{
-                    background: MOD_STATO_COLOR[mod.stato] + '22',
-                    color:      MOD_STATO_COLOR[mod.stato],
-                    border:     `1px solid ${MOD_STATO_COLOR[mod.stato]}55`,
-                  }}>{MOD_STATO_LABEL[mod.stato]}</span>
+        {/* Moduli CMR */}
+        {supreme?.moduli && (
+          <div className="emg-col">
+            <div className="emg-section-title">Moduli CMR</div>
+            <div className="rp-moduli-grid">
+              {Object.entries(supreme.moduli).map(([nome, mod]) => (
+                <div key={nome} className="rp-modulo-card">
+                  <div className="rp-mod-header">
+                    <span className="rp-mod-name">{nome}</span>
+                    <span className="rp-mod-stato" style={{
+                      background: MOD_STATO_COLOR[mod.stato] + '22',
+                      color:      MOD_STATO_COLOR[mod.stato],
+                      border:     `1px solid ${MOD_STATO_COLOR[mod.stato]}55`,
+                    }}>{MOD_STATO_LABEL[mod.stato]}</span>
+                  </div>
+                  <div className="rp-mod-row"><span className="rp-mod-label">Personale: </span>{mod.personale}</div>
+                  <div className="rp-mod-row"><span className="rp-mod-label">Mezzi: </span>{mod.mezzi.join(', ')}</div>
+                  {mod.impedimenti.length > 0 && (
+                    <div className="rp-mod-impedimento">⚠ {mod.impedimenti.join('; ')}</div>
+                  )}
                 </div>
-                <div className="rp-mod-row"><span className="rp-mod-label">Personale: </span>{mod.personale}</div>
-                <div className="rp-mod-row"><span className="rp-mod-label">Mezzi: </span>{mod.mezzi.join(', ')}</div>
-                {mod.impedimenti.length > 0 && (
-                  <div className="rp-mod-impedimento">⚠ {mod.impedimenti.join('; ')}</div>
-                )}
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-
-      {/* Raccomandazione */}
-      <div className="rp-section">
-        <div className="rp-section-title">Raccomandazione — Direttore Regionale</div>
-        <div className={`rp-raccomandazione rp-rac-${rec.level.toLowerCase()}`}>
-          <div className="rp-rac-level">{rec.level}</div>
-          <div className="rp-rac-text">{rec.text}</div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -153,7 +120,8 @@ export default function Dashboard() {
   const [sortDir,        setSortDir]        = useState('asc');
   const [viewBox,        setViewBox]        = useState('0 0 610 793');
   const [so115Rischio,   setSo115Rischio]   = useState(SOGLIE.so115_rischio);
-  const [panelReg,       setPanelReg]       = useState(null);
+  const [expandedReg,    setExpandedReg]    = useState(null);
+  const [centroids,      setCentroids]      = useState({});
 
   const regionDropRef = useRef(null);
   const statusDropRef = useRef(null);
@@ -168,6 +136,20 @@ export default function Dashboard() {
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, []);
+
+  // Calcola centroidi per triangoli di allerta
+  useEffect(() => {
+    const c = {};
+    Object.entries(pathRefs.current).forEach(([name, el]) => {
+      if (el) {
+        try {
+          const b = el.getBBox();
+          c[name] = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+        } catch (_) {}
+      }
+    });
+    setCentroids(c);
+  }, [scenario]);
 
   // Zoom mappa su selezione
   useEffect(() => {
@@ -189,7 +171,7 @@ export default function Dashboard() {
 
   const sc = SCENARIOS[scenario];
 
-  // Dati arricchiti con sat + sit (calcolati tramite getSituation)
+  // Dati arricchiti con sat + sit
   const enriched = useMemo(() => sc.data.map(r => {
     const sat = Math.round(r.banda / r.cap * 100);
     const sit = getSituation(r.tipo, sat);
@@ -233,26 +215,21 @@ export default function Dashboard() {
 
   // ── Metriche quadranti ────────────────────────────────────────────────────
 
-  // Q1 – Margine Operativo
   const q1ok   = filtered.filter(r => r.sit === 'OPERATIVO').length;
   const q1warn = filtered.filter(r => r.sit === 'DEGRADATO').length;
   const q1crit = filtered.filter(r => r.sit === 'EMERGENZA').length;
   const q1Label      = q1crit > 0 ? 'Critica' : q1warn > 0 ? 'Sotto stress' : 'Stabile';
   const q1LabelColor = q1crit > 0 ? COL.critStroke : q1warn > 0 ? COL.warnStroke : COL.okStroke;
 
-  // Q2 – Sedi a Rischio (usa soglia SO115 dinamica)
   const q2 = filtered.filter(r =>
     r.sit === 'EMERGENZA' || (r.sit === 'DEGRADATO' && r.so115 > so115Rischio)
   ).length;
 
-  // Q3 – Anomalie (degrado/emergenza senza attività SO115 a giustificarlo)
   const q3 = filtered.filter(r =>
     (r.sit === 'EMERGENZA' || r.sit === 'DEGRADATO') && r.so115 <= SOGLIE.so115_anomalia
   ).length;
   const q3Color = q3 === 0 ? COL.okStroke : q3 <= 2 ? COL.warnStroke : COL.critStroke;
 
-  // Trend chart: media aggregata dei trend per sede delle sedi filtrate
-  // → cambia automaticamente con la selezione regioni/stato
   const trendData = useMemo(() => {
     const sites = filtered.length > 0 ? filtered : enriched;
     const m = sites.length;
@@ -269,14 +246,12 @@ export default function Dashboard() {
     proiezione: Math.min(100, Math.round(r.sat * 1.15 + 2))
   }));
 
-  // Q4 – Tendenza: transizioni di stato previste a +30 min
   const q4Transitions = filtered.map(r => {
     const satProj = Math.min(100, Math.round(r.sat * 1.15 + 2));
     const sitProj = getSituation(r.tipo, satProj);
     return sitProj !== r.sit ? { from: r.sit, to: sitProj } : null;
   }).filter(Boolean);
 
-  // Raggruppa per coppia from→to
   const q4Groups = {};
   q4Transitions.forEach(({ from, to }) => {
     const k = `${from} → ${to}`;
@@ -292,9 +267,9 @@ export default function Dashboard() {
   function toggleRegion(reg) {
     if (!ACTIVE_REGIONS.includes(reg)) return;
     setSelected(prev => { const n = new Set(prev); n.has(reg) ? n.delete(reg) : n.add(reg); return n; });
-    setPanelReg(reg);
+    setExpandedReg(prev => prev === reg ? prev : reg);
   }
-  function clearSelection() { setSelected(new Set()); setPanelReg(null); }
+  function clearSelection() { setSelected(new Set()); setExpandedReg(null); }
 
   function toggleStatusFilter(st) {
     setStatusFilters(prev => {
@@ -309,10 +284,10 @@ export default function Dashboard() {
     setSelected(new Set());
     setStatusFilters(new Set(['OPERATIVO','DEGRADATO','EMERGENZA']));
     setSo115Rischio(SOGLIE.so115_rischio);
-    setPanelReg(null);
+    setExpandedReg(null);
   }
 
-  // ── Mappa helpers (usano getSituation via stMap) ──────────────────────────
+  // ── Mappa helpers ─────────────────────────────────────────────────────────
   function getFill(name) {
     if (EXCLUDED.includes(name) || !ACTIVE_REGIONS.includes(name)) return COL.excluded;
     if (hasSel && !selected.has(name)) return COL.faded;
@@ -336,6 +311,18 @@ export default function Dashboard() {
 
   const showProvMarkers = sc.provs.length > 0 &&
     (!hasSel || sc.criticalRegions.some(r => selected.has(r)));
+
+  // Triangolo EM01 solo dove CODEM è attivo E ci sono province in EMERGENZA
+  const em01Regions = sc.supreme?.codem
+    ? sc.criticalRegions.filter(r =>
+        ACTIVE_REGIONS.includes(r) &&
+        (sc.provinces?.[r] || []).some(p => {
+          const cap = CAP[p.tipo];
+          const sat = Math.round(p.banda / cap * 100);
+          return p.tipo === 'LTE' || sat >= 80;
+        })
+      )
+    : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -370,7 +357,7 @@ export default function Dashboard() {
           {hasSel && <span className="reset" onClick={clearSelection}>✕ Reset</span>}
           {regionDropOpen && (
             <div className="msel-dropdown">
-              {ACTIVE_REGIONS.map(r => (
+              {SORTED_REGIONS.map(r => (
                 <label key={r} className="msel-option">
                   <input type="checkbox" checked={selected.has(r)} onChange={() => toggleRegion(r)} />
                   {r}
@@ -430,7 +417,6 @@ export default function Dashboard() {
       {/* ── Quadranti ── */}
       <div className="quad-row">
 
-        {/* Q1 – Margine Operativo Rete */}
         <div className="quad">
           <div className="quad-title">Margine Operativo Rete</div>
           <div className="quad-state-label" style={{color: q1LabelColor}}>{q1Label}</div>
@@ -446,7 +432,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Q2 – Sedi a Rischio */}
         <div className="quad">
           <div className="quad-title">Sedi a Rischio Operativo</div>
           <div className="quad-kpi" style={{color: q2>3?COL.critStroke:q2>0?COL.warnStroke:COL.okStroke}}>{q2}</div>
@@ -454,7 +439,6 @@ export default function Dashboard() {
           <div className="quad-detail">Emergenza + Degradato con SO115 &gt; {so115Rischio}</div>
         </div>
 
-        {/* Q3 – Anomalie Operative */}
         <div className="quad">
           <div className="quad-title">Anomalie Operative ⚠</div>
           <div className="quad-kpi" style={{color: q3Color}}>
@@ -464,7 +448,6 @@ export default function Dashboard() {
           <div className="quad-detail">Degrado/emergenza senza attività SO115</div>
         </div>
 
-        {/* Q4 – Tendenza Rete */}
         <div className="quad">
           <div className="quad-title">Tendenza Rete (+30 min)</div>
           <div className="quad-kpi" style={{color: trendColor, fontSize: 28}}>{trendIcon}</div>
@@ -504,6 +487,28 @@ export default function Dashboard() {
                 onMouseLeave={() => setHoveredRegion(null)}
               />
             ))}
+
+            {/* Triangoli di allerta per regioni in emergenza */}
+            {em01Regions.map(name => {
+              const c = centroids[name];
+              if (!c) return null;
+              const tx = c.x, ty = c.y;
+              const s = 9;
+              return (
+                <g key={`warn-${name}`}
+                  style={{cursor:'pointer'}}
+                  onClick={e => { e.stopPropagation(); setExpandedReg(name); }}>
+                  <polygon
+                    points={`${tx},${ty-s} ${tx-s*0.87},${ty+s*0.5} ${tx+s*0.87},${ty+s*0.5}`}
+                    fill={COL.vvf} stroke="#fff" strokeWidth={1}
+                  />
+                  <text x={tx} y={ty+s*0.4} textAnchor="middle" fontSize={8} fill="#fff" fontWeight="900"
+                    style={{pointerEvents:'none'}}>!</text>
+                </g>
+              );
+            })}
+
+            {/* Marcatori provinciali */}
             {showProvMarkers && sc.provs.map(p => (
               <g key={p.name}>
                 <circle cx={p.x} cy={p.y} r={12} fill={COL.critStroke} opacity={0.18} />
@@ -517,7 +522,7 @@ export default function Dashboard() {
                 <line x1={sc.epicenter.x-7} y1={sc.epicenter.y-7} x2={sc.epicenter.x+7} y2={sc.epicenter.y+7} stroke={COL.critStroke} strokeWidth={3} />
                 <line x1={sc.epicenter.x+7} y1={sc.epicenter.y-7} x2={sc.epicenter.x-7} y2={sc.epicenter.y+7} stroke={COL.critStroke} strokeWidth={3} />
                 <text x={sc.epicenter.x+10} y={sc.epicenter.y-5} fontSize={13} fill={COL.critStroke} fontWeight={700}
-                  stroke="white" strokeWidth={3} paintOrder="stroke">Epicentro</text>
+                  stroke="white" strokeWidth={3} paintOrder="stroke">Niscemi</text>
               </g>
             )}
           </svg>
@@ -525,6 +530,7 @@ export default function Dashboard() {
             <div className="map-tooltip">
               <strong>{hoveredRegion}</strong><br/>
               <span style={{color: sitStroke(stMap[hoveredRegion])}}>{stMap[hoveredRegion]}</span>
+              {stMap[hoveredRegion] === 'EMERGENZA' && <span style={{color:COL.critStroke}}> — clicca ▲ per dettagli</span>}
             </div>
           )}
           <div className="legend">
@@ -532,17 +538,22 @@ export default function Dashboard() {
             <span><span className="legend-dot" style={{background:COL.warnStroke}} />Degradato</span>
             <span><span className="legend-dot" style={{background:COL.critStroke}} />Emergenza</span>
             <span><span className="legend-dot" style={{background:COL.excluded}} />Esclusa</span>
+            {em01Regions.length > 0 &&
+              <span><span className="legend-dot" style={{background:COL.vvf,borderRadius:0,clipPath:'polygon(50% 0%,0% 100%,100% 100%)'}} />Allerta</span>}
           </div>
         </div>
 
         <div className="table-section">
-          <div className="section-title">Dettaglio sedi</div>
+          <div className="section-title">
+            Dettaglio sedi
+            {expandedReg && <span className="table-expanded-hint"> — clicca riga per espandere province</span>}
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   {[
-                    ['reg',     'Sede'],
+                    ['reg',     'Sede / Comando'],
                     ['tipo',    'Tipo'],
                     ['banda',   'Banda'],
                     ['cap',     'Cap.'],
@@ -566,34 +577,95 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {sorted.map(r => {
-                  const sitLabel = r.sit === 'OPERATIVO' ? 'Operativo' : r.sit === 'DEGRADATO' ? 'Degradato' : 'Emergenza';
-                  const sitClass = r.sit === 'OPERATIVO' ? 'status-ok' : r.sit === 'DEGRADATO' ? 'status-warning' : 'status-critical';
-                  const pktColor = r.pktLoss > 5 ? COL.critStroke : r.pktLoss >= 1 ? COL.warnStroke : COL.okStroke;
+                  const sitLabel   = r.sit === 'OPERATIVO' ? 'Operativo' : r.sit === 'DEGRADATO' ? 'Degradato' : 'Emergenza';
+                  const sitClass   = r.sit === 'OPERATIVO' ? 'status-ok' : r.sit === 'DEGRADATO' ? 'status-warning' : 'status-critical';
+                  const pktColor   = r.pktLoss > 5 ? COL.critStroke : r.pktLoss >= 1 ? COL.warnStroke : COL.okStroke;
+                  const isExpanded = expandedReg === r.reg;
+                  const provinces  = sc.provinces?.[r.reg] || [];
+                  const hasProv    = provinces.length > 0;
                   return (
-                    <tr key={r.reg}>
-                      <td style={{fontWeight:500}}>{r.reg}</td>
-                      <td>
-                        <span style={{
-                          color: sitStroke(r.sit), fontWeight: 700,
-                          background: sitFill(r.sit),
-                          padding: '1px 8px', borderRadius: 4, fontSize: 11
-                        }}>{r.tipo}</span>
-                      </td>
-                      <td>{r.banda} Mbps</td>
-                      <td style={{color:'#aaa'}}>{r.cap} Mbps</td>
-                      <td>
-                        <div className="bar-bg">
-                          <div className="bar-fill" style={{
-                            width: `${Math.min(r.sat,100)}%`,
-                            background: r.sat>=80?COL.critStroke:r.sat>=50?COL.warnStroke:COL.okStroke
-                          }} />
-                        </div>
-                        <span style={{marginLeft:4}}>{r.sat}%</span>
-                      </td>
-                      <td style={{color: pktColor, fontWeight:500}}>{r.pktLoss}%</td>
-                      <td style={{textAlign:'center',fontWeight:500,color:r.so115>15?COL.critStroke:r.so115>5?COL.warnStroke:'#aaa'}}>{r.so115}</td>
-                      <td><span className={`status-pill ${sitClass}`}>{sitLabel}</span></td>
-                    </tr>
+                    <React.Fragment key={r.reg}>
+                      {/* ── Riga D.R. (Direzione Regionale) ── */}
+                      <tr
+                        onClick={() => setExpandedReg(isExpanded ? null : r.reg)}
+                        style={{cursor:'pointer', background: isExpanded ? '#fff8f8' : undefined}}
+                      >
+                        <td style={{fontWeight:600}}>
+                          <span className="expand-arrow">{isExpanded ? '▼' : '▶'}</span>
+                          <span style={{fontSize:10, color:'#999', fontWeight:400, marginRight:3}}>D.R.</span>
+                          {r.reg}
+                          {r.sit === 'EMERGENZA' && <span className="row-alert-badge">⚠</span>}
+                        </td>
+                        <td>
+                          <span style={{
+                            color: sitStroke(r.sit), fontWeight: 700,
+                            background: sitFill(r.sit),
+                            padding: '1px 8px', borderRadius: 4, fontSize: 11
+                          }}>{r.tipo}</span>
+                        </td>
+                        <td>{r.banda} Mbps</td>
+                        <td style={{color:'#aaa'}}>{r.cap} Mbps</td>
+                        <td>
+                          <div className="bar-bg">
+                            <div className="bar-fill" style={{
+                              width: `${Math.min(r.sat,100)}%`,
+                              background: r.sat>=80?COL.critStroke:r.sat>=50?COL.warnStroke:COL.okStroke
+                            }} />
+                          </div>
+                          <span style={{marginLeft:4}}>{r.sat}%</span>
+                        </td>
+                        <td style={{color: pktColor, fontWeight:500}}>{r.pktLoss}%</td>
+                        <td style={{textAlign:'center',fontWeight:500,color:r.so115>15?COL.critStroke:r.so115>5?COL.warnStroke:'#aaa'}}>{r.so115}</td>
+                        <td><span className={`status-pill ${sitClass}`}>{sitLabel}</span></td>
+                      </tr>
+
+                      {/* ── Righe C.P. (Comandi Provinciali) espanse ── */}
+                      {isExpanded && hasProv && provinces.map(p => {
+                        const pCap = CAP[p.tipo];
+                        const pSat = Math.round(p.banda / pCap * 100);
+                        const pSit = p.tipo === 'LTE' ? 'EMERGENZA' : pSat >= 80 ? 'EMERGENZA' : pSat >= 50 ? 'DEGRADATO' : 'OPERATIVO';
+                        const pSitLabel = pSit === 'OPERATIVO' ? 'Operativo' : pSit === 'DEGRADATO' ? 'Degradato' : 'Emergenza';
+                        const pSitClass = pSit === 'OPERATIVO' ? 'status-ok' : pSit === 'DEGRADATO' ? 'status-warning' : 'status-critical';
+                        const pPktColor = p.pktLoss > 5 ? COL.critStroke : p.pktLoss >= 1 ? COL.warnStroke : COL.okStroke;
+                        return (
+                          <tr key={p.nome} className="prov-sub-row">
+                            <td style={{paddingLeft:24, fontWeight:500}}>
+                              <span style={{fontSize:10, color:'#bbb', marginRight:3}}>C.P.</span>
+                              {p.nome}
+                            </td>
+                            <td>
+                              <span style={{
+                                color: sitStroke(pSit), fontWeight:700,
+                                background: sitFill(pSit),
+                                padding:'1px 7px', borderRadius:4, fontSize:10
+                              }}>{p.tipo}</span>
+                            </td>
+                            <td style={{fontSize:11}}>{p.banda} Mbps</td>
+                            <td style={{fontSize:11, color:'#aaa'}}>{pCap} Mbps</td>
+                            <td>
+                              <div className="bar-bg">
+                                <div className="bar-fill" style={{
+                                  width:`${Math.min(pSat,100)}%`,
+                                  background: pSat>=80?COL.critStroke:pSat>=50?COL.warnStroke:COL.okStroke
+                                }} />
+                              </div>
+                              <span style={{marginLeft:4, fontSize:11}}>{pSat}%</span>
+                            </td>
+                            <td style={{fontSize:11, color:pPktColor, fontWeight:500}}>{p.pktLoss}%</td>
+                            <td style={{textAlign:'center', fontSize:11, fontWeight:500,
+                              color:p.so115>15?COL.critStroke:p.so115>5?COL.warnStroke:'#aaa'}}>{p.so115}</td>
+                            <td><span className={`status-pill ${pSitClass}`} style={{fontSize:10}}>{pSitLabel}</span></td>
+                          </tr>
+                        );
+                      })}
+                      {isExpanded && !hasProv && (
+                        <tr className="prov-sub-row">
+                          <td colSpan={8} style={{paddingLeft:28, fontSize:11, color:'#aaa', fontStyle:'italic'}}>
+                            Dati a livello di Comando non disponibili per questo scenario.
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -601,6 +673,17 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* ── Riquadro emergenza (CODEM + CMR + raccomandazione) ── */}
+      {expandedReg && sc.supreme && (
+        <div style={{padding:'0 16px', marginBottom:12}}>
+          <EmergencyInfoBox
+            regName={expandedReg}
+            sc={sc}
+            onClose={() => setExpandedReg(null)}
+          />
+        </div>
+      )}
 
       {/* ── Grafici ── */}
       <div className="bottom-row">
@@ -641,13 +724,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {panelReg && (
-        <RegionPanel
-          regName={panelReg}
-          sc={sc}
-          onClose={() => setPanelReg(null)}
-        />
-      )}
     </div>
   );
 }
