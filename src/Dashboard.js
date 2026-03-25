@@ -15,27 +15,47 @@ const svgRegions = regionsRaw.map(([id, engName, path]) => ({
 const SORTED_REGIONS = [...ACTIVE_REGIONS].sort((a, b) => a.localeCompare(b, 'it'));
 
 // ── Logica di raccomandazione per il Direttore Regionale ─────────────────────
+function computeProvSit(p) {
+  const cap = CAP[p.tipo] || 100;
+  const sat = Math.round(p.banda / cap * 100);
+  if (p.tipo === 'LTE' || sat >= 80) return 'EMERGENZA';
+  if (p.tipo === 'DSL' || sat >= 50) return 'DEGRADATO';
+  return 'OPERATIVO';
+}
+
 function getRecommendation(sc, regName) {
-  const supreme = sc.supreme;
+  const supreme   = sc.supreme;
   const provinces = sc.provinces?.[regName] || [];
-  const critiche  = provinces.filter(p => p.stato === 'EMERGENZA').length;
-  const degradate = provinces.filter(p => p.stato === 'DEGRADATO').length;
+  const critiche  = provinces.filter(p => computeProvSit(p) === 'EMERGENZA').length;
+  const degradate = provinces.filter(p => computeProvSit(p) === 'DEGRADATO').length;
+  const allZeroSO115 = provinces.length > 0 && provinces.every(p => p.so115 === 0);
 
   if (!supreme || !supreme.codem) {
+    // Anomalia: fibra satura senza SO115 e senza SUPREME
+    if (allZeroSO115 && (critiche > 0 || degradate > 0)) {
+      const saturate = provinces.filter(p => computeProvSit(p) !== 'OPERATIVO').length;
+      return {
+        level: 'ATTENZIONE',
+        text:  `${saturate} Comand${saturate > 1 ? 'i' : 'o'} con Fibra satura e nessuna attività SO115 correlata — nessuna emergenza SUPREME attiva. ` +
+               `Possibile malfunzionamento della rete (saturazione anormale) o attacco informatico in corso. ` +
+               `Azioni consigliate: (1) verificare con CED centrale il tracciato di rete, ` +
+               `(2) isolare eventuali segmenti compromessi, (3) attivare procedura Incident Response cyber.`,
+      };
+    }
     if (critiche > 0)
-      return { level: 'URGENTE',    text: 'Sedi in EMERGENZA senza CODEM attivo su SUPREME. Valutare immediatamente apertura emergenza regionale.' };
+      return { level: 'URGENTE',    text: 'Comandi in EMERGENZA senza CODEM attivo su SUPREME. Valutare immediatamente apertura emergenza regionale e allertamento CMR.' };
     if (degradate > 0)
-      return { level: 'ATTENZIONE', text: 'Sedi degradate rilevate senza dichiarazione di emergenza. Monitorare evoluzione e valutare allertamento CMR.' };
+      return { level: 'ATTENZIONE', text: 'Comandi degradati senza dichiarazione di emergenza. Monitorare evoluzione e valutare allertamento preventivo CMR.' };
     return { level: 'INFO', text: 'Situazione nella norma. Nessuna azione richiesta.' };
   }
 
   const msIct = supreme.moduli?.['MS.ICT'];
   if (msIct?.stato === 'ALLERTATO' && msIct?.impedimenti?.length > 0)
-    return { level: 'ATTENZIONE', text: `MS.ICT allertato con impedimento: ${msIct.impedimenti[0]}. Verificare disponibilità risorsa alternativa presso altro Comando.` };
+    return { level: 'ATTENZIONE', text: `MS.ICT allertato con impedimento: «${msIct.impedimenti[0]}». Verificare disponibilità risorsa alternativa presso altro Comando provinciale.` };
   if (msIct?.stato === 'PRONTO' && critiche > 0)
-    return { level: 'URGENTE', text: 'Sedi in emergenza con MS.ICT pronto. Disporre invio immediato per ripristino comunicazioni nel Distretto Operativo.' };
+    return { level: 'URGENTE', text: 'Comandi in emergenza con MS.ICT in stato di prontezza. Disporre invio immediato per ripristino comunicazioni nel Distretto Operativo.' };
   if (msIct?.stato === 'IMPEGNATO')
-    return { level: 'INFO', text: "Moduli CMR in missione. Verificare stato avanzamento sul CODEM e aggiornare rapporto d'intervento." };
+    return { level: 'INFO', text: "Moduli CMR in missione. Verificare avanzamento sul CODEM e aggiornare rapporto d'intervento." };
 
   return { level: 'INFO', text: 'CODEM attivo. Moduli CMR in stato di prontezza. Situazione monitorata.' };
 }
@@ -184,6 +204,25 @@ export default function Dashboard() {
     return m;
   }, [enriched]);
 
+  // Colore mappa: usa il peggiore tra i comandi provinciali (quando disponibili)
+  const mapStatusMap = useMemo(() => {
+    const m = {};
+    enriched.forEach(r => {
+      const provs = sc.provinces?.[r.reg] || [];
+      if (provs.length > 0) {
+        let worst = 'OPERATIVO';
+        provs.forEach(p => {
+          const sit = computeProvSit(p);
+          if (SIT_ORDER[sit] < SIT_ORDER[worst]) worst = sit;
+        });
+        m[r.reg] = worst;
+      } else {
+        m[r.reg] = r.sit;
+      }
+    });
+    return m;
+  }, [enriched, sc.provinces]);
+
   const hasSel          = selected.size > 0;
   const allStatusSel    = statusFilters.size === 3;
 
@@ -192,6 +231,27 @@ export default function Dashboard() {
     if (!allStatusSel && !statusFilters.has(r.sit)) return false;
     return true;
   });
+
+  // Dati metriche adattativi: quando una regione è selezionata e ha dati
+  // provinciali, usa i comandi provinciali (C.P.) invece del dato D.R.
+  const metricsData = useMemo(() => {
+    if (!hasSel) return filtered;
+    const result = [];
+    filtered.forEach(r => {
+      const provs = sc.provinces?.[r.reg] || [];
+      if (provs.length > 0) {
+        provs.forEach(p => {
+          const cap = CAP[p.tipo];
+          const sat = Math.round(p.banda / cap * 100);
+          const sit = computeProvSit(p);
+          result.push({ reg: r.reg, nome: p.nome, tipo: p.tipo, banda: p.banda, cap, sat, sit, pktLoss: p.pktLoss, so115: p.so115, trend: r.trend });
+        });
+      } else {
+        result.push(r);
+      }
+    });
+    return result;
+  }, [filtered, hasSel, sc.provinces]);
 
   // ── Ordinamento tabella ───────────────────────────────────────────────────
   function toggleSort(col) {
@@ -213,21 +273,28 @@ export default function Dashboard() {
     return sortDir === 'asc' ? vA - vB : vB - vA;
   });
 
-  // ── Metriche quadranti ────────────────────────────────────────────────────
+  // ── Metriche quadranti (adattive: usano C.P. se regione selezionata) ─────────
 
-  const q1ok   = filtered.filter(r => r.sit === 'OPERATIVO').length;
-  const q1warn = filtered.filter(r => r.sit === 'DEGRADATO').length;
-  const q1crit = filtered.filter(r => r.sit === 'EMERGENZA').length;
+  const q1ok   = metricsData.filter(r => r.sit === 'OPERATIVO').length;
+  const q1warn = metricsData.filter(r => r.sit === 'DEGRADATO').length;
+  const q1crit = metricsData.filter(r => r.sit === 'EMERGENZA').length;
   const q1Label      = q1crit > 0 ? 'Critica' : q1warn > 0 ? 'Sotto stress' : 'Stabile';
   const q1LabelColor = q1crit > 0 ? COL.critStroke : q1warn > 0 ? COL.warnStroke : COL.okStroke;
 
-  const q2 = filtered.filter(r =>
+  // Q2: sedi rete in emergenza OPPURE degradate con SO115 alto
+  // (non correlato a SUPREME — è emergenza delle connessioni)
+  const q2 = metricsData.filter(r =>
     r.sit === 'EMERGENZA' || (r.sit === 'DEGRADATO' && r.so115 > so115Rischio)
   ).length;
 
-  const q3 = filtered.filter(r =>
-    (r.sit === 'EMERGENZA' || r.sit === 'DEGRADATO') && r.so115 <= SOGLIE.so115_anomalia
-  ).length;
+  // Q3: anomalie operative = degrado/emergenza rete con SO115 basso
+  // E nessuna emergenza SUPREME attiva che giustifichi il degrado
+  const q3 = metricsData.filter(r => {
+    const hasNetworkIssue = r.sit === 'EMERGENZA' || r.sit === 'DEGRADATO';
+    const lowSO115        = r.so115 <= SOGLIE.so115_anomalia;
+    const coveredByEM01   = sc.supreme?.codem && (sc.supremeRegions || []).includes(r.reg);
+    return hasNetworkIssue && lowSO115 && !coveredByEM01;
+  }).length;
   const q3Color = q3 === 0 ? COL.okStroke : q3 <= 2 ? COL.warnStroke : COL.critStroke;
 
   const trendData = useMemo(() => {
@@ -240,13 +307,15 @@ export default function Dashboard() {
     }));
   }, [filtered, enriched]);
 
-  const satData = [...filtered].sort((a,b) => a.reg.localeCompare(b.reg)).map(r => ({
-    name:       r.reg,
-    attuale:    r.sat,
-    proiezione: Math.min(100, Math.round(r.sat * 1.15 + 2))
-  }));
+  const satData = [...metricsData]
+    .sort((a, b) => (a.nome || a.reg).localeCompare(b.nome || b.reg))
+    .map(r => ({
+      name:       r.nome || r.reg,
+      attuale:    r.sat,
+      proiezione: Math.min(100, Math.round(r.sat * 1.15 + 2)),
+    }));
 
-  const q4Transitions = filtered.map(r => {
+  const q4Transitions = metricsData.map(r => {
     const satProj = Math.min(100, Math.round(r.sat * 1.15 + 2));
     const sitProj = getSituation(r.tipo, satProj);
     return sitProj !== r.sit ? { from: r.sit, to: sitProj } : null;
@@ -287,21 +356,21 @@ export default function Dashboard() {
     setExpandedReg(null);
   }
 
-  // ── Mappa helpers ─────────────────────────────────────────────────────────
+  // ── Mappa helpers (usa mapStatusMap per riflettere lo stato peggiore tra C.P.) ─
   function getFill(name) {
     if (EXCLUDED.includes(name) || !ACTIVE_REGIONS.includes(name)) return COL.excluded;
     if (hasSel && !selected.has(name)) return COL.faded;
-    return sitFill(stMap[name] || 'OPERATIVO');
+    return sitFill(mapStatusMap[name] || 'OPERATIVO');
   }
   function getStroke(name) {
     if (EXCLUDED.includes(name)) return '#ddd';
     if (hasSel && selected.has(name)) return COL.vvf;
-    return sitStroke(stMap[name] || 'OPERATIVO');
+    return sitStroke(mapStatusMap[name] || 'OPERATIVO');
   }
   function getStrokeWidth(name) {
     if (hasSel && selected.has(name)) return 2.5;
     if (EXCLUDED.includes(name)) return 0.3;
-    const sit = stMap[name] || 'OPERATIVO';
+    const sit = mapStatusMap[name] || 'OPERATIVO';
     return sit === 'EMERGENZA' ? 1.5 : sit === 'DEGRADATO' ? 1 : 0.5;
   }
   function getOpacity(name) {
@@ -312,17 +381,8 @@ export default function Dashboard() {
   const showProvMarkers = sc.provs.length > 0 &&
     (!hasSel || sc.criticalRegions.some(r => selected.has(r)));
 
-  // Triangolo EM01 solo dove CODEM è attivo E ci sono province in EMERGENZA
-  const em01Regions = sc.supreme?.codem
-    ? sc.criticalRegions.filter(r =>
-        ACTIVE_REGIONS.includes(r) &&
-        (sc.provinces?.[r] || []).some(p => {
-          const cap = CAP[p.tipo];
-          const sat = Math.round(p.banda / cap * 100);
-          return p.tipo === 'LTE' || sat >= 80;
-        })
-      )
-    : [];
+  // Triangolo EM01: SOLO per regioni con CODEM SUPREME attivo (sc.supremeRegions)
+  const em01Regions = sc.supreme?.codem ? (sc.supremeRegions || []) : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -526,10 +586,10 @@ export default function Dashboard() {
               </g>
             )}
           </svg>
-          {hoveredRegion && stMap[hoveredRegion] && (
+          {hoveredRegion && mapStatusMap[hoveredRegion] && (
             <div className="map-tooltip">
               <strong>{hoveredRegion}</strong><br/>
-              <span style={{color: sitStroke(stMap[hoveredRegion])}}>{stMap[hoveredRegion]}</span>
+              <span style={{color: sitStroke(mapStatusMap[hoveredRegion])}}>{mapStatusMap[hoveredRegion]}</span>
               {stMap[hoveredRegion] === 'EMERGENZA' && <span style={{color:COL.critStroke}}> — clicca ▲ per dettagli</span>}
             </div>
           )}
@@ -615,7 +675,7 @@ export default function Dashboard() {
                           <span style={{marginLeft:4}}>{r.sat}%</span>
                         </td>
                         <td style={{color: pktColor, fontWeight:500}}>{r.pktLoss}%</td>
-                        <td style={{textAlign:'center',fontWeight:500,color:r.so115>15?COL.critStroke:r.so115>5?COL.warnStroke:'#aaa'}}>{r.so115}</td>
+                        <td style={{textAlign:'center', color:'#ccc', fontSize:13}}>—</td>
                         <td><span className={`status-pill ${sitClass}`}>{sitLabel}</span></td>
                       </tr>
 

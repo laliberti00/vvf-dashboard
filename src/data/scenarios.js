@@ -4,7 +4,6 @@ import { ACTIVE_REGIONS, CAP } from './constants';
 function rn(a, b) { return Math.round(a + Math.random() * (b - a)); }
 function rf(a, b) { return +((a + Math.random() * (b - a)).toFixed(2)); }
 
-// ── Trend per sede ────────────────────────────────────────────────────────────
 function generateSiteTrend(tipo, sat) {
   return Array.from({ length: 30 }, (_, i) => {
     let latenza, pktLoss;
@@ -28,42 +27,41 @@ function generateSiteTrend(tipo, sat) {
   });
 }
 
-// ── Builder sede ──────────────────────────────────────────────────────────────
 function buildSite(reg, tipo, banda, pktLoss, so115) {
   const cap = CAP[tipo];
   const sat = Math.round(banda / cap * 100);
   return { reg, tipo, banda, cap, pktLoss, so115, trend: generateSiteTrend(tipo, sat) };
 }
 
-// ── Solo epicentro (X sulla mappa), niente pallini provinciali ────────────────
-// Coordinate SVG Sicilia: bounding box reale X:272→463, Y:580→792
-// Niscemi si trova al confine Caltanissetta/Ragusa, zona centro-sud
+// ── Epicentro mappa — solo X, senza pallini ───────────────────────────────────
+// Coordinate SVG Sicilia: bbox reale X:272→463, Y:580→792
+// Niscemi si trova al confine CL/RG, zona centro-sud
 const EPICENTER_NISCEMI = { x: 362, y: 698 };
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DATI PROVINCIALI — SCENARIO FRANA NISCEMI (14/03/2025)
-// Struttura ogni comando: { nome, tipo, banda, pktLoss, so115 }
-// cap viene calcolato in Dashboard da CAP[tipo]; sat = banda/cap*100
+// DATI PROVINCIALI
+// Struttura: { nome, tipo, banda, pktLoss, so115 }
+// cap = CAP[tipo], sat = banda/cap*100 — calcolati in Dashboard
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Sicilia — Frana Niscemi ───────────────────────────────────────────────────
-// C.P. Caltanissetta: collegamento LTE (antenna locale inagibile per frana),
-//   alto traffico SO115 (18 chiamate attive), fallback su rete mobile 4G
-// C.P. Agrigento: DSL (linea PTT degradata per overflow traffico), interventi
-//   in supporto zona confinante, 8 squadre impegnate
-// C.P. Ragusa: DSL (congestione per traffico di supporto), 6 squadre attive
-// C.P. Enna: Fibra stabile, monitoraggio preventivo versanti franosi zona
-// C.P. Catania: Fibra stabile, rinforzi in attesa di ordine di marcia
-// C.P. Palermo: Fibra stabile — sede D.R. Sicilia, attività di coordinamento
-// C.P. Messina: Fibra stabile, nessun coinvolgimento diretto
-// C.P. Siracusa: Fibra stabile, nessun coinvolgimento diretto
-// C.P. Trapani: Fibra stabile, nessun coinvolgimento diretto
+// C.P. Caltanissetta: LTE (antenna fibra divelta dalla frana, fallback 4G),
+//   18 interventi SO115 attivi (squadre sul posto + richieste in arrivo)
+// C.P. Agrigento: DSL (linea PTT degradata, traffico overflow da Caltanissetta),
+//   8 interventi SO115 (supporto bordo area colpita)
+// C.P. Ragusa: DSL, 6 interventi (supporto logistico)
+// C.P. Catania: Fibra al 44% — traffico in salita per relay comunicazioni
+//   d'emergenza, proiezione a 30min sfiora DEGRADATO
+// C.P. Enna: Fibra al 43% — backbone di transito verso Caltanissetta
+//   sotto pressione, in peggioramento
+// C.P. Palermo: Fibra OK — sede D.R. Sicilia, coordinamento regionale
+// C.P. Messina, Siracusa, Trapani: stabili, nessun coinvolgimento
 const PROV_SIC_NISCEMI = [
   { nome: 'Caltanissetta', tipo: 'LTE',   banda: 3.2, pktLoss: 9.1, so115: 18 },
   { nome: 'Agrigento',     tipo: 'DSL',   banda: 6.4, pktLoss: 2.9, so115: 8  },
   { nome: 'Ragusa',        tipo: 'DSL',   banda: 6.1, pktLoss: 2.3, so115: 6  },
-  { nome: 'Enna',          tipo: 'Fibra', banda: 12,  pktLoss: 0.1, so115: 3  },
-  { nome: 'Catania',       tipo: 'Fibra', banda: 22,  pktLoss: 0.2, so115: 3  },
+  { nome: 'Catania',       tipo: 'Fibra', banda: 44,  pktLoss: 0.8, so115: 3  },
+  { nome: 'Enna',          tipo: 'Fibra', banda: 43,  pktLoss: 0.7, so115: 3  },
   { nome: 'Palermo',       tipo: 'Fibra', banda: 28,  pktLoss: 0.3, so115: 2  },
   { nome: 'Messina',       tipo: 'Fibra', banda: 15,  pktLoss: 0.2, so115: 1  },
   { nome: 'Siracusa',      tipo: 'Fibra', banda: 9,   pktLoss: 0.1, so115: 1  },
@@ -71,12 +69,11 @@ const PROV_SIC_NISCEMI = [
 ];
 
 // ── Calabria — Frana Niscemi ──────────────────────────────────────────────────
-// C.P. Catanzaro: DSL degradato per overflow di traffico di monitoraggio
-//   proveniente dai comandi siciliani (saturazione tratta backbone sud)
-// C.P. Crotone: DSL in congestione per stesse cause, supporto logistico attivo
-// C.P. Cosenza: Fibra stabile, nessun coinvolgimento operativo
-// C.P. Reggio Calabria: Fibra stabile, personale in stand-by
-// C.P. Vibo Valentia: Fibra stabile, nessun coinvolgimento
+// Il backbone meridionale è congestionato per il traffico di gestione
+// emergenza che transita sui nodi di Catanzaro e Crotone
+// C.P. Catanzaro: DSL (il link istituzionale è DSL — infrastruttura più datata)
+// C.P. Crotone: DSL, stessa causa
+// Altri: stabili
 const PROV_CAL_NISCEMI = [
   { nome: 'Catanzaro',       tipo: 'DSL',   banda: 5.8, pktLoss: 2.2, so115: 7 },
   { nome: 'Crotone',         tipo: 'DSL',   banda: 6.2, pktLoss: 1.9, so115: 5 },
@@ -85,35 +82,10 @@ const PROV_CAL_NISCEMI = [
   { nome: 'Vibo Valentia',   tipo: 'Fibra', banda: 11,  pktLoss: 0.0, so115: 0 },
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// DATI PROVINCIALI — SCENARIO ANOMALIA (ATTACCO INFORMATICO)
-// Fibra satura senza correlazione con attività SO115 → anomalia operativa
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// ── Sicilia — Anomalia ────────────────────────────────────────────────────────
-// C.P. Palermo: Fibra saturata al 91% — traffico anomalo sull'uplink,
-//   nessun incidente in corso → anomalia informatica
-// C.P. Catania: Fibra saturata all'89% — stessa origine (propagazione attacco)
-// C.P. Messina: Fibra al 74% in degradazione, congestione parziale
-// C.P. Agrigento/Caltanissetta/Enna/Ragusa/Siracusa/Trapani: non interessati
-const PROV_SIC_ANOMALIA = [
-  { nome: 'Palermo',       tipo: 'Fibra', banda: 91, pktLoss: 5.4, so115: 0 },
-  { nome: 'Catania',       tipo: 'Fibra', banda: 89, pktLoss: 4.9, so115: 0 },
-  { nome: 'Messina',       tipo: 'Fibra', banda: 74, pktLoss: 3.1, so115: 0 },
-  { nome: 'Agrigento',     tipo: 'Fibra', banda: 14, pktLoss: 0.2, so115: 0 },
-  { nome: 'Caltanissetta', tipo: 'Fibra', banda: 12, pktLoss: 0.1, so115: 0 },
-  { nome: 'Enna',          tipo: 'Fibra', banda: 8,  pktLoss: 0.0, so115: 0 },
-  { nome: 'Ragusa',        tipo: 'Fibra', banda: 10, pktLoss: 0.1, so115: 0 },
-  { nome: 'Siracusa',      tipo: 'Fibra', banda: 9,  pktLoss: 0.0, so115: 0 },
-  { nome: 'Trapani',       tipo: 'Fibra', banda: 7,  pktLoss: 0.0, so115: 0 },
-];
-
-// ── Calabria — Anomalia ───────────────────────────────────────────────────────
-// C.P. Catanzaro: Fibra saturata al 92% — origine attacco informatico
-// C.P. Cosenza: Fibra saturata al 88% — propagazione
-// C.P. Reggio Calabria: Fibra saturata al 85% — propagazione
-// C.P. Crotone: Fibra al 72%, parzialmente interessato
-// C.P. Vibo Valentia: non interessato
+// ── Calabria — Anomalia Operativa ─────────────────────────────────────────────
+// Tutti i C.P. mostrano Fibra satura senza alcuna attività SO115 correlata
+// Nessuna emergenza SUPREME attiva → anomalia operativa (possibile attacco cyber
+// o saturazione artificiale del backbone)
 const PROV_CAL_ANOMALIA = [
   { nome: 'Catanzaro',       tipo: 'Fibra', banda: 92, pktLoss: 6.3, so115: 0 },
   { nome: 'Cosenza',         tipo: 'Fibra', banda: 88, pktLoss: 5.7, so115: 0 },
@@ -122,60 +94,68 @@ const PROV_CAL_ANOMALIA = [
   { nome: 'Vibo Valentia',   tipo: 'Fibra', banda: 18, pktLoss: 0.3, so115: 0 },
 ];
 
-// ── Puglia — Anomalia ─────────────────────────────────────────────────────────
-// C.P. Bari: DSL al 98% (link quasi saturo) — anomalia su accesso DSL,
-//   nessun incidente correlato
-// Altri comandi non interessati
-const PROV_PUG_ANOMALIA = [
-  { nome: 'Bari',          tipo: 'DSL',   banda: 7.9, pktLoss: 3.4, so115: 0 },
-  { nome: 'Foggia',        tipo: 'Fibra', banda: 14,  pktLoss: 0.1, so115: 0 },
-  { nome: 'Taranto',       tipo: 'Fibra', banda: 11,  pktLoss: 0.0, so115: 0 },
-  { nome: 'Lecce',         tipo: 'Fibra', banda: 13,  pktLoss: 0.1, so115: 0 },
-  { nome: 'Brindisi',      tipo: 'Fibra', banda: 9,   pktLoss: 0.0, so115: 0 },
-  { nome: 'BAT',           tipo: 'Fibra', banda: 10,  pktLoss: 0.0, so115: 0 },
-];
+// ── Aggregazioni per scenari ──────────────────────────────────────────────────
+const PROVINCES_NISCEMI  = { 'Sicilia': PROV_SIC_NISCEMI, 'Calabria': PROV_CAL_NISCEMI };
+const PROVINCES_ANOMALIA = { 'Calabria': PROV_CAL_ANOMALIA };
 
-// ── Aggregazioni ──────────────────────────────────────────────────────────────
-const PROVINCES_NISCEMI  = { 'Sicilia': PROV_SIC_NISCEMI,  'Calabria': PROV_CAL_NISCEMI };
-const PROVINCES_ANOMALIA = { 'Sicilia': PROV_SIC_ANOMALIA, 'Calabria': PROV_CAL_ANOMALIA, 'Puglia': PROV_PUG_ANOMALIA };
-
-// ── SCENARIO 1: Normale ───────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCENARIO 1: Normale
+// Qualche regione DSL per realismo, tutto sostanzialmente operativo
+// ═══════════════════════════════════════════════════════════════════════════════
 function generateNormal() {
-  return ACTIVE_REGIONS.map(reg =>
-    buildSite(reg, 'Fibra', rn(8, 30), rf(0.0, 0.4), rn(0, 3))
-  );
-}
-
-// ── SCENARIO 2: Frana di Niscemi (CL) — 14/03/2025 ───────────────────────────
-// D.R. Sicilia: LTE (peggioramento aggregato di regione per emergenza CL)
-// D.R. Calabria: DSL (congestione backbone sud)
-function generateNiscemi() {
-  const critiche  = ['Sicilia'];
-  const degradate = ['Calabria'];
+  const dsl = {
+    // Molise e Basilicata storicamente su DSL per bassa densità infrastrutturale
+    'Molise':     { banda: rn(5, 7),  pktLoss: rf(1.0, 2.8), so115: rn(1, 3) },
+    'Basilicata': { banda: rn(5, 6),  pktLoss: rf(0.8, 2.2), so115: rn(0, 2) },
+  };
   return ACTIVE_REGIONS.map(reg => {
-    if (critiche.includes(reg))
-      return buildSite(reg, 'LTE',   rn(3, 4),  rf(5.0, 12.0), rn(15, 28));
-    if (degradate.includes(reg))
-      return buildSite(reg, 'DSL',   rn(5, 7),  rf(1.0,  3.5), rn(5,  12));
-    return   buildSite(reg, 'Fibra', rn(8, 35), rf(0.0,  0.4), rn(0,   4));
+    const d = dsl[reg];
+    if (d) return buildSite(reg, 'DSL', d.banda, d.pktLoss, d.so115);
+    return buildSite(reg, 'Fibra', rn(8, 30), rf(0.0, 0.4), rn(0, 3));
   });
 }
 
-// ── SCENARIO 3: Anomalia Operativa — Attacco Informatico ─────────────────────
-function generateAnomaliaCalabria() {
-  const anomale = {
-    'Calabria': { tipo: 'Fibra', banda: rn(88, 93), pktLoss: rf(3.0, 8.0), so115: 0 },
-    'Sicilia':  { tipo: 'Fibra', banda: rn(84, 91), pktLoss: rf(2.5, 7.0), so115: 0 },
-    'Puglia':   { tipo: 'DSL',   banda: rn(7,  8),  pktLoss: rf(1.5, 4.0), so115: 0 },
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCENARIO 2: Frana di Niscemi (CL) — 14/03/2025
+//
+// La D.R. Sicilia ha sede a Palermo → OPERATIVA (Fibra stabile)
+// L'emergenza è a livello C.P. Caltanissetta (LTE)
+// Il triangolo EM01 compare sulla Sicilia per invitare ad aprire il dettaglio
+//
+// D.R. Calabria: Fibra 68% (backbone congestionato) → DEGRADATO
+//   proiezione a +30min: 80% → EMERGENZA (Q4 mostra peggioramento)
+// D.R. Campania: Fibra 55% (pressione backbone sud) → DEGRADATO
+// ═══════════════════════════════════════════════════════════════════════════════
+function generateNiscemi() {
+  const overrides = {
+    'Sicilia':  { tipo: 'Fibra', banda: 18,  pktLoss: rf(0.1, 0.3), so115: rn(2, 5) },
+    'Calabria': { tipo: 'Fibra', banda: 68,  pktLoss: rf(1.2, 2.5), so115: rn(5, 12) },
+    'Campania': { tipo: 'Fibra', banda: 55,  pktLoss: rf(0.5, 1.2), so115: rn(3, 7) },
   };
   return ACTIVE_REGIONS.map(reg => {
-    const a = anomale[reg];
-    if (a) return buildSite(reg, a.tipo, a.banda, a.pktLoss, a.so115);
+    const o = overrides[reg];
+    if (o) return buildSite(reg, o.tipo, o.banda, o.pktLoss, o.so115);
+    return buildSite(reg, 'Fibra', rn(8, 30), rf(0.0, 0.4), rn(0, 4));
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SCENARIO 3: Anomalia Operativa — Calabria
+//
+// Solo Calabria presenta Fibra satura (88-93%) con SO115=0
+// Nessuna emergenza SUPREME attiva → ANOMALIA OPERATIVA
+// Le altre regioni sono regolari
+// ═══════════════════════════════════════════════════════════════════════════════
+function generateAnomaliaCalabria() {
+  return ACTIVE_REGIONS.map(reg => {
+    if (reg === 'Calabria')
+      return buildSite(reg, 'Fibra', rn(88, 93), rf(3.0, 8.0), 0);
     return buildSite(reg, 'Fibra', rn(8, 30), rf(0.0, 0.4), rn(0, 3));
   });
 }
 
 // ── Registro scenari ──────────────────────────────────────────────────────────
+// supremeRegions: regioni con CODEM EM01 attivo (triangolo di allerta sulla mappa)
 export const SCENARIOS = {
   normal: {
     id:              'normal',
@@ -186,6 +166,7 @@ export const SCENARIOS = {
     provs:           [],
     epicenter:       null,
     criticalRegions: [],
+    supremeRegions:  [],
     provinces:       {},
     supreme:         null,
   },
@@ -196,9 +177,10 @@ export const SCENARIOS = {
     badge:           'Emergenza — Frana Niscemi (CL) 14/03/2025',
     badgeClass:      'badge-crit',
     data:            generateNiscemi(),
-    provs:           [],                          // niente pallini, solo X epicentro
+    provs:           [],
     epicenter:       EPICENTER_NISCEMI,
-    criticalRegions: ['Sicilia', 'Calabria'],
+    criticalRegions: ['Sicilia', 'Calabria', 'Campania'],
+    supremeRegions:  ['Sicilia'],   // CODEM EM01 attivo solo per Sicilia
     provinces:       PROVINCES_NISCEMI,
     supreme: {
       codem:   'EM-2025-031',
@@ -229,13 +211,14 @@ export const SCENARIOS = {
 
   anomaliaCalabria: {
     id:              'anomaliaCalabria',
-    label:           'Anomalia — Attacco Informatico',
-    badge:           'Anomalia Operativa — Attacco Informatico (Calabria / Sicilia / Puglia)',
+    label:           'Anomalia — Calabria',
+    badge:           'Anomalia Operativa — Saturazione Fibra (Calabria)',
     badgeClass:      'badge-crit',
     data:            generateAnomaliaCalabria(),
     provs:           [],
     epicenter:       null,
-    criticalRegions: ['Calabria', 'Sicilia', 'Puglia'],
+    criticalRegions: ['Calabria'],
+    supremeRegions:  [],            // Nessun CODEM attivo
     provinces:       PROVINCES_ANOMALIA,
     supreme: {
       codem:   null,
